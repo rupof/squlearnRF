@@ -12,6 +12,8 @@ from .feature_map_implemented.cheb_rx import ChebRx
 from .feature_map_implemented.param_z_feature_map import ParamZFeatureMap
 from .feature_map_implemented.qiskit_z_feature_map import QiskitZFeatureMap
 from .feature_map_implemented.qiskit_feature_map import QiskitFeatureMap
+from .feature_map_implemented.hardware_efficient_embedding import HardwareEfficientEmbeddingMap
+
 
 __all__ = [
     "PrunedFeatureMap",
@@ -30,4 +32,5 @@ __all__ = [
     "ParamZFeatureMap",
     "QiskitZFeatureMap",
     "QiskitFeatureMap",
+    "HardwareEfficientEmbeddingMap"
 ]
