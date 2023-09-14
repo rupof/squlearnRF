@@ -3,8 +3,63 @@ import numpy as np
 
 from qiskit.quantum_info import Statevector, partial_trace
 from squlearn.feature_map import *
+from itertools import combinations
+from squlearn.expectation_operator import CustomExpectationOperator
 
 
+
+def generate_combinations(string_len, n_elements, symbol):
+    # If the number of elements requested is greater than the string length,
+    # it's not possible to form such combinations, so return an empty list.
+    if n_elements > string_len:
+        return []
+
+    # Generate all possible combinations of indices where the symbol ("X")
+    # should be placed in the string.
+    combinations_list = list(combinations(range(string_len), n_elements))
+
+    # Initialize the list to store all the combinations.
+    result = []
+    
+    # Iterate through each combination of indices and create the corresponding string.
+    for combo in combinations_list:
+        # Initialize a list with "I" (identity) characters for the string.
+        string_characters = ["I"] * string_len
+        
+        # Set the symbol ("X") at the appropriate positions based on the combination.
+        for idx in combo:
+            string_characters[idx] = symbol
+        
+        # Convert the list of characters into a single string and add it to the result list.
+        result.append("".join(string_characters))
+    
+    # Return the list of all unique combinations.
+    return result
+
+
+def generate_n_density_reduced_matrices(num_qubits, nDRM, basis  ):
+    """
+    Generates all possible density matrices for a given number of qubits and returns them as a list of CustomExpectationOperators
+    """
+    X_measurements = generate_combinations(num_qubits, nDRM, "X")
+    Y_measurements = generate_combinations(num_qubits, nDRM, "Y")
+    Z_measurements = generate_combinations(num_qubits, nDRM, "Z")
+    if basis == "XYZ":
+        measurements = X_measurements + Y_measurements + Z_measurements
+    elif basis == "XY":
+        measurements = X_measurements + Y_measurements
+    elif basis == "XZ":
+        measurements = X_measurements + Z_measurements
+    elif basis == "YZ":
+        measurements = Y_measurements + Z_measurements
+    elif basis == "Z":
+        measurements = Z_measurements
+    elif basis == "X": 
+        measurements = X_measurements
+        
+    for i in range(len(measurements)):
+        measurements[i] = CustomExpectationOperator(num_qubits, measurements[i])
+    return measurements
 
 def meyer_wallach_given_circuit(circuit, num_qubits):
     """

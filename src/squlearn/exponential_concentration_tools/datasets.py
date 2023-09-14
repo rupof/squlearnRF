@@ -46,14 +46,13 @@ def pca_sklearn(X, n_components):
     X_pca = pca.fit_transform(X)
     return X_pca
 
-def get_MNIST_pca_filtered_dataset(n, num_samples=40, pca=pca_sklearn, mnist=None, random_seed=None):
+def get_MNIST_pca_filtered_dataset(n, num_samples=40, pca=pca_sklearn, mnist=None, random_seed=1):
     """
     Gets the MNIST dataset, performs PCA on it, and filters for only 0 and 1.
     Returning the projected dataset X_pca and the corresponding labels y.
     If random_seed is not None, it will set the random seed for reproducibility.
     """
-    if random_seed is not None:
-        np.random.seed(random_seed)
+    np.random.seed(random_seed)
 
     # Load MNIST dataset
     if mnist is None:
@@ -249,3 +248,23 @@ def get_plasticc_PCA_dataset(n_components, num_samples, plasticc):
     x_test = scikit_pca.transform(x_test_normalized)
     return x_train, x_test, y_train, y_test
 
+
+
+def get_train_test_data(dataset_name, num_qubits, num_samples, dataset_files = []):
+    MNIST, fMNIST, kMNIST, plasticc = dataset_files 
+    random_seed=1
+    if dataset_name == "MNIST":    
+        # Generate some training data
+        X_train, y_train = get_MNIST_pca_filtered_dataset(num_qubits, num_samples = num_samples, pca=pca_sklearn, mnist = MNIST, random_seed = random_seed)
+        x_test, y_test = get_MNIST_pca_filtered_dataset(num_qubits, num_samples = num_samples, pca=pca_sklearn, mnist = MNIST, random_seed = 2)
+    elif dataset_name == "Hypercube":
+        X_train, y_train = get_hypercube_dataset(num_qubits, num_samples = num_samples, half_width = np.pi, random_seed = random_seed)
+        x_test, y_test = get_hypercube_dataset(num_qubits, num_samples = num_samples, half_width = np.pi, random_seed = 2)
+    elif dataset_name == "fMNIST":
+        X_train, y_train, x_test, y_test = get_fMNIST_dataset(num_qubits, num_samples, fMNIST)
+    elif dataset_name == "kMNIST":
+        X_train, y_train, x_test, y_test = get_KMNIST_pca_filtered_dataset(num_qubits, num_samples, kmnist=kMNIST)
+    elif dataset_name == "plasticc":
+        X_train, x_test, y_train, y_test = get_plasticc_PCA_dataset(num_qubits, num_samples, plasticc)
+        
+    return X_train, y_train, x_test, y_test

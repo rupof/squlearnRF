@@ -3,7 +3,9 @@ import os
 import json
 
 
-def SaveParameterDatasetAndKernel(directory, feature_map, num_layers, num_qubits, parameters, dataset_name, dataset, kernel, dataset_preprocessing, extra_parameters, extra_name, entanglement_score=None, measurement_basis = None, outerkernel = None, outerkernel_parameter = None):
+def SaveParameterDatasetAndKernel(directory, feature_map, num_layers, num_qubits, parameters, dataset_name, 
+                                  dataset, kernel, dataset_preprocessing, extra_parameters, extra_name, entanglement_score=None,
+                                    measurement_basis = None, outerkernel = None, outerkernel_parameter = None):
     """
     Saves the parameters, dataset, kernel, and optional entanglement score to files within the specified directory.
     The default naming convention is as follows:
@@ -29,7 +31,7 @@ def SaveParameterDatasetAndKernel(directory, feature_map, num_layers, num_qubits
     # Create the directory name based on the naming convention
     directory_name = f"{feature_map}_num_layers{num_layers}_num_qubits{num_qubits}_{dataset_name}_{dataset_preprocessing}"
     if outerkernel is not None:
-        directory_name += f"_{outerkernel}_{outerkernel_parameter}"
+        directory_name += f"_{outerkernel}_{outerkernel_parameter}_basis{measurement_basis}"
 
     # Add extra_parameters to the directory name if provided
     if extra_parameters is not None:
@@ -41,6 +43,7 @@ def SaveParameterDatasetAndKernel(directory, feature_map, num_layers, num_qubits
     if extra_name is not None:
         directory_name += f"_{extra_name}"
 
+    directory_name += f"_samplesize{len(dataset)}"
     # Create the full directory path
     directory_path = os.path.join(directory, directory_name)
 
@@ -89,6 +92,61 @@ def SaveParameterDatasetAndKernel(directory, feature_map, num_layers, num_qubits
 
 
 
+
+def find_string_and_load(lines, string):
+    for line in lines:
+        if string in line:
+            try:
+                result = json.loads(line.split(":", 1)[1].strip())
+                return result
+            except (IndexError, ValueError):
+                return None
+
+    return None
+
+def interpret_measurement_str(input_string):
+    """
+    # Test examples
+    print(interpret_string("Z1DRM"))     # Output: ("Z", 1)
+    print(interpret_string("XYZ3DRM"))   # Output: ("XYZ", 3)
+    """
+    # Initialize measurement_basis and nDRM variables
+    measurement_basis = ""
+    nDRM = ""
+
+    # Find the index where the numeric part of the string starts
+    numeric_index = None
+    for i in range(len(input_string)):
+        if input_string[i].isdigit():
+            numeric_index = i
+            if input_string[i+1].isdigit():
+                return input_string[:numeric_index], int(input_string[numeric_index:numeric_index+2])
+            break
+
+    # If no numeric part found, return empty values for measurement_basis and nDRM
+    if numeric_index is None:
+        return measurement_basis, nDRM
+
+    # Extract the measurement_basis and nDRM from the input_string
+    measurement_basis = input_string[:numeric_index]
+    nDRM = input_string[numeric_index]
+
+    return measurement_basis, int(nDRM)
+
+
+
+
+def find_string(lines, string):
+    for line in lines:
+        if string in line:
+            try:
+                result = line.split(":", 1)[1].strip()
+                return result
+            except IndexError:
+                return None
+
+    return None
+
 def ReverseEngineerParameters(directory):
     """
     Reverse engineers the parameters, dataset, kernel, and entanglement score from the specified directory.
@@ -131,56 +189,20 @@ def ReverseEngineerParameters(directory):
     with open(parameters_file, "r") as f:
         lines = f.readlines()
 
-    # Extract feature map
-    feature_map = lines[0].split(":")[1].strip()
 
-    # Extract number of layers
-    num_layers = int(lines[1].split(":")[1].strip())
+    # Extract properties if they exist
 
-    # Extract number of qubits
-    num_qubits = int(lines[2].split(":")[1].strip())
-
-    # Extract parameters if they exist
-    parameters_str = lines[3].split(":")[1].strip()
-    if parameters_str != "None":
-        try:
-            parameters = json.loads(parameters_str)
-        except:
-        #if parameters are not a list or dictionary, then they are a string
-            parameters = parameters_str
-    else:
-        parameters = None
-
-    # Extract dataset name
-    dataset_name = lines[4].split(":")[1].strip()
-
-    # Extract dataset preprocessing information
-    dataset_preprocessing = lines[5].split(":")[1].strip()
-
-    # Extract extra parameters if they exist
-    extra_parameters = None
-    if len(lines) > 6 and "Extra Parameters" in lines[6]:
-        extra_parameters = json.loads(lines[6].split(":")[1].strip())
-
-    # Extract extra name if it exists
-    extra_name = None
-    if len(lines) > 7 and "Extra Name" in lines[7]:
-        extra_name = lines[7].split(":")[1].strip()
-
-    # Extract measurement basis if it exists
-    measurement_basis = None
-    if len(lines) > 8 and "Measurement Basis" in lines[8]:
-        measurement_basis = lines[8].split(":")[1].strip()
-    
-    # Extract outer kernel if it exists
-    outerkernel = None
-    if len(lines) > 9 and "Outer Kernel" in lines[9]:
-        outerkernel = lines[9].split(":")[1].strip()
-    
-    # Extract outer kernel parameter if it exists
-    outerkernel_parameter = None
-    if len(lines) > 10 and "Outer Kernel Parameter" in lines[10]:
-        outerkernel_parameter = lines[10].split(":")[1].strip()
+    parameters = find_string_and_load(lines, "Parameters")  
+    feature_map = find_string(lines, "Feature Map")
+    num_layers = int(find_string(lines, "Number of Layers"))
+    num_qubits = int(find_string(lines, "Number of Qubits"))
+    dataset_name = find_string(lines, "Dataset Name")
+    dataset_preprocessing = find_string(lines, "Dataset Preprocessing")
+    extra_parameters = find_string_and_load(lines, "Extra Parameters")
+    extra_name = find_string(lines, "Extra Name")
+    measurement_basis = find_string(lines, "Measurement Basis")
+    outerkernel = find_string(lines, "Outer Kernel")
+    outerkernel_parameter = find_string(lines, "Outer Kernel Parameter")
     
 
     # Read dataset file
@@ -205,6 +227,41 @@ def ReverseEngineerParameters(directory):
     if os.path.isfile(entanglement_score_file):
         with open(entanglement_score_file, "r") as f:
             entanglement_score = [float(line.strip()) for line in f]
+    
+    test_dataset = []
+    test_dataset_file = os.path.join(directory,"test_dataset.txt")
+    if os.path.isfile(test_dataset_file):
+        with open(test_dataset_file, "r") as f:
+            for line in f:
+                row = [float(element) for element in line.strip().split()]
+                test_dataset.append(row)
+    
+    test_kernel = []
+    test_kernel_file = os.path.join(directory,"test_kernel.txt")
+    if os.path.isfile(test_kernel_file):
+        with open(test_kernel_file, "r") as f:
+            for line in f:
+                row = [float(element) for element in line.strip().split()]
+                test_kernel.append(row)
+
+    test_prediction = []
+
+    test_prediction_file = os.path.join(directory,"test_prediction.txt")
+    if os.path.isfile(test_prediction_file):
+        with open(test_prediction_file, "r") as f:
+            for line in f:
+                row = [float(element) for element in line.strip().split()]
+                test_prediction.append(row)
+    if test_prediction == []:
+        print("it was empty")
+        test_prediction_file = os.path.join(directory,"test_predict.txt")
+        if os.path.isfile(test_prediction_file):
+            with open(test_prediction_file, "r") as f:
+                for line in f:
+                    row = [float(element) for element in line.strip().split()]
+                    test_prediction.append(row)
+        
+
 
     # Return the reverse engineered parameters as a dictionary
     parameters_dict = {
@@ -221,14 +278,23 @@ def ReverseEngineerParameters(directory):
         "entanglement_score": np.array(entanglement_score),
         "measurement_basis": measurement_basis,
         "outerkernel": outerkernel,
-        "outerkernel_parameter": outerkernel_parameter
+        "outerkernel_parameter": outerkernel_parameter,
+        "test_dataset": np.array(test_dataset),
+        "test_kernel": np.array(test_kernel),
+        "test_prediction": np.array(test_prediction)
     }
 
     return parameters_dict
 
+def window_long_name_adaptation(directory_path, string):
+    file = os.path.join(directory_path, string)
+    file = file.encode("unicode_escape").decode()
+    file = os.path.abspath(os.path.normpath(file))
+    return file
+
 
 def GenerateDirectoryName(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, 
-extra_parameters=None, extra_name=None, outerkernel=None, outerkernel_parameter=None):
+extra_parameters=None, extra_name=None, outerkernel=None, outerkernel_parameter=None, measurement_basis=None, old = False, samplesize = None):
     """
     Generates a directory name based on the provided inputs.
 
@@ -247,8 +313,15 @@ extra_parameters=None, extra_name=None, outerkernel=None, outerkernel_parameter=
     """
     
     directory_name = f"{feature_map}_num_layers{num_layers}_num_qubits{num_qubits}_{dataset_name}_{dataset_preprocessing}"
-    if outerkernel is not None:
+    if outerkernel is not None and old is False:
+        directory_name += f"_{outerkernel}_{outerkernel_parameter}_basis{measurement_basis}"
+    elif outerkernel is not None and old is True:
+        #print(directory_name)
         directory_name += f"_{outerkernel}_{outerkernel_parameter}"
+        pass
+        #directory_name += f"_{outerkernel}_{outerkernel_parameter}"
+    elif outerkernel is None and old is True:
+        pass
 
     if extra_parameters is not None:
         extra_parameters_str = json.dumps(extra_parameters)
@@ -257,22 +330,49 @@ extra_parameters=None, extra_name=None, outerkernel=None, outerkernel_parameter=
 
     if extra_name is not None:
         directory_name += f"_{extra_name}"
+    
+    if samplesize is not None:
+        directory_name += f"_samplesize{samplesize}"
 
     
 
-    return os.path.join(original_directory, directory_name)
+    return window_long_name_adaptation(original_directory, directory_name)
 
 
-def ExtractResults(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, extra_parameters=None, extra_name=None,  outerkernel=None, outerkernel_parameter=None):
+def ExtractResults(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, 
+                   extra_parameters=None, extra_name=None,  outerkernel=None, outerkernel_parameter=None, measurement_basis = None, samplesize = None):
     """
     Wrapper functions that returns the experiment results as a dictionary.
     """
-    directory_name = GenerateDirectoryName(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, extra_parameters, extra_name, outerkernel, outerkernel_parameter)
+
     
     try: 
+        directory_name = GenerateDirectoryName(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, 
+                                           extra_parameters, extra_name, outerkernel, outerkernel_parameter, measurement_basis, samplesize = samplesize)
+
         return ReverseEngineerParameters(directory_name)
-    except:
-        raise ValueError(f"Could not extract results for {directory_name}")
+    except Exception as e:
+        print(e)
+        print(f"N_Could not extract results for {directory_name}")
+        try: 
+            directory_name = GenerateDirectoryName(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, 
+                                           extra_parameters, extra_name, outerkernel, outerkernel_parameter, measurement_basis, old = True, samplesize = samplesize)
+            try:
+                return ReverseEngineerParameters(directory_name)
+            except:
+                print(f"Could not extract results for {directory_name}")
+                try: 
+                    directory_name = GenerateDirectoryName(original_directory, feature_map, num_layers, num_qubits, dataset_name, dataset_preprocessing, 
+                                           extra_parameters, extra_name, None, outerkernel_parameter, measurement_basis, old = True, samplesize = samplesize)
+                    try:
+                        return ReverseEngineerParameters(directory_name)
+                    except:
+                        pass
+                except:
+                    print(f"Could not extract results for {directory_name}")
+        except:
+            print(f"Could not extract results for {directory_name}")
+            raise ValueError(f"Could not extract results for {directory_name}")
     
 
 ########################################### Some examples ###########################################
