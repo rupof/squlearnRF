@@ -1,7 +1,6 @@
 """ Quantum Gaussian process classifier"""
-import numpy as np
 from ..matrix.kernel_matrix_base import KernelMatrixBase
-from .kernel_util import kernel_wrapper
+from squlearn.kernel.matrix.kernel_util import kernel_wrapper
 from sklearn.gaussian_process import GaussianProcessClassifier
 
 
@@ -18,11 +17,16 @@ class QGPC(GaussianProcessClassifier):
     Read more in the
     `scikit-learn user guide
     <https://scikit-learn.org/stable/modules/gaussian_process.html#gaussian-process>`_.
+    Additional arguments can be set via ``**kwargs``.
 
     Args:
-        quantum_kernel (KernelMatrixBase): The quantum kernel matrix to be used for the GP
+        quantum_kernel (Union[KernelMatrixBase, str]): The quantum kernel matrix to be used for the GP
                 (either a fidelity quantum kernel (FQK)
                 or projected quantum kernel (PQK) must be provided)
+        **kwargs: Keyword arguments for the quantum kernel matrix, possible arguments can be obtained
+            by calling ``get_params()``. Can be used to set for example the number of qubits
+            (``num_qubits=``), or (if supported) the number of layers (``num_layers=``)
+            of the underlying encoding circuit.
 
     See Also
     --------
@@ -34,14 +38,14 @@ class QGPC(GaussianProcessClassifier):
 
         from sklearn.datasets import load_iris
         from squlearn import Executor
-        from squlearn.feature_map import QEKFeatureMap
+        from squlearn.encoding_circuit import QEKEncodingCircuit
         from squlearn.kernel.matrix import FidelityKernel
         from squlearn.kernel.ml import QGPC
         X, y = load_iris(return_X_y=True)
 
-        fmap = QEKFeatureMap(num_qubits=X.shape[1], num_features=X.shape[1], num_layers=2)
-        q_kernel = FidelityKernel(feature_map=fmap, executor=Executor("statevector_simulator"))
-        q_kernel.assign_parameters(np.random.rand(fmap.num_parameters))
+        enc_circ = QEKEncodingCircuit(num_qubits=X.shape[1], num_features=X.shape[1], num_layers=2)
+        q_kernel = FidelityKernel(encoding_circuit=enc_circ, executor=Executor("statevector_simulator"))
+        q_kernel.assign_parameters(np.random.rand(enc_circ.num_parameters))
         qgpc_ansatz = QGPC(quantum_kernel=q_kernel)
         qgpc_ansatz.fit(X, y)
         qgpc_ansatz.score(X, y)
@@ -54,10 +58,79 @@ class QGPC(GaussianProcessClassifier):
     --------
     """
 
-    def __init__(self, quantum_kernel: KernelMatrixBase, **kwargs):
+    def __init__(self, quantum_kernel: KernelMatrixBase, **kwargs) -> None:
         self._quantum_kernel = quantum_kernel
+
+        # Apply kwargs to set_params of quantum kernel
+        quantum_kernel_update_params = self.quantum_kernel.get_params().keys() & kwargs.keys()
+        if quantum_kernel_update_params:
+            self.quantum_kernel.set_params(
+                **{key: kwargs[key] for key in quantum_kernel_update_params}
+            )
+            # remove quantum_kernel_kwargs for SVR initialization
+            for key in quantum_kernel_update_params:
+                kwargs.pop(key, None)
+
         super().__init__(**kwargs)
-        self.kernel = kernel_wrapper(quantum_kernel)
+        self.kernel = kernel_wrapper(self._quantum_kernel)
+
+    @classmethod
+    def _get_param_names(cls):
+        names = GaussianProcessClassifier._get_param_names()
+        names.remove("kernel")
+        names.remove("warm_start")
+        return names
+
+    def get_params(self, deep: bool = True) -> dict:
+        """
+        Returns hyper-parameters and their values of the QGPC class.
+
+        Args:
+            deep (bool): If True, also the parameters for
+                         contained objects are returned (default=True).
+
+        Return:
+            Dictionary with hyper-parameters and values.
+        """
+        params = dict()
+
+        # get parameters from the parent GPC class
+        for key in self._get_param_names():
+            params[key] = getattr(self, key)
+
+        # add qgpc specific parameters
+        params["quantum_kernel"] = self._quantum_kernel
+        if deep:
+            params.update(self._quantum_kernel.get_params(deep=deep))
+        return params
+
+    def set_params(self, **params) -> None:
+        """
+        Sets value of the QGPC hyper-parameters.
+
+        Args:
+            params: Hyper-parameters and their values, e.g. ``num_qubits=2``.
+        """
+        valid_params = self.get_params(deep=True).keys()
+        for key in params.keys():
+            if key not in valid_params:
+                raise ValueError(
+                    f"Invalid parameter {key!r}. "
+                    f"Valid parameters are {sorted(valid_params)!r}."
+                )
+
+        self_params = self.get_params(deep=False).keys() & params.keys()
+        for key in self_params:
+            try:
+                setattr(self, key, params[key])
+            except AttributeError:
+                setattr(self, "_" + key, params[key])
+
+        # Set parameters of the Quantum Kernel and its underlying objects
+        quantum_kernel_params = self._quantum_kernel.get_params().keys() & params.keys()
+        if quantum_kernel_params:
+            self._quantum_kernel.set_params(**{key: params[key] for key in quantum_kernel_params})
+        return self
 
     @property
     def quantum_kernel(self) -> KernelMatrixBase:

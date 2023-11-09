@@ -12,8 +12,7 @@
 #
 # import os
 # import sys
-# sys.path.insert(0, os.path.abspath('.'))
-
+# sys.path.insert(0, os.path.abspath("."))
 
 # -- Project information -----------------------------------------------------
 
@@ -22,24 +21,43 @@ copyright = "2023, Fraunhofer IPA"
 author = "Fraunhofer IPA"
 
 # The full version, including alpha/beta/rc tags
-release = "0.2.0"
-
+release = "0.4.0"
 
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
+# extensions coming with Sphinx (named "sphinx.ext.*") or your custom
 # ones.
 
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosectionlabel",
     "sphinx.ext.autosummary",
+    "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
+    "sphinxcontrib.spelling",
     "matplotlib.sphinxext.plot_directive",
+    "myst_parser",
+    "nbsphinx",
+    "nbsphinx_link",
 ]
 
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
+
 autodoc_default_options = {"members": True, "inherited-members": True}
+
+
+# Skip property members --> They should be defined in Attributes
+def skip_property_member(app, what, name, obj, skip, options):
+    if isinstance(obj, property):
+        return True
+
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip_property_member)
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -47,7 +65,7 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "**.ipynb_checkpoints"]
 
 # generate autosummary even if no references
 autosummary_generate = True
@@ -69,4 +87,12 @@ latex_elements = {
     "preamble": r"""
     \usepackage{braket}
     """,
+}
+
+# intersphinx
+intersphinx_mapping = {
+    "qiskit": ("https://qiskit.org/documentation/", None),
+    "qiskit-aer": ("https://qiskit.org/ecosystem/aer/", None),
+    "scipy": ('https://docs.scipy.org/doc/scipy/', None),
+    "sklearn": ("https://scikit-learn.org/stable/", None),
 }

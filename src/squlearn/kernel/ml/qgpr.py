@@ -1,39 +1,49 @@
 """Quantum Gaussian Process Regressor"""
+import warnings
+
 from ..matrix.kernel_matrix_base import KernelMatrixBase
-from .kernel_util import regularize_full_kernel, tikhonov_regularization
+from ..matrix.regularization import regularize_full_kernel
 
 import numpy as np
+from typing import Optional, Union
 from scipy.linalg import cholesky, cho_solve
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.preprocessing._data import _handle_zeros_in_scale
-from numbers import Real
 
 
 class QGPR(BaseEstimator, RegressorMixin):
     """
     Quantum Gaussian Process Regression (QGPR).
 
-    This class implements the Gaussian process regression analogous to sklearn
+    This class implements the Gaussian process regression analogous to scikit-learn
     but is not a wrapper.
     The implementation is based on Algorithm 2.1 of Ref. [1].
+    Additional arguments can be set via ``**kwargs``.
 
     Args:
-        quantum_kernel (KernelMatrixBase):
-                The quantum kernel matrix to be used for the Gaussian process
-                (either a fidelity quantum kernel (FQK) or
-                projected quantum kernel (PQK) must be provided)
+        quantum_kernel (Optional[Union[KernelMatrixBase, str]]):
+            The quantum kernel matrix to be used for the Gaussian process
+            (either a fidelity quantum kernel (FQK) or
+            projected quantum kernel (PQK) must be provided). By
+            setting quantum_kernel="precomputed", X is assumed to be a kernel matrix
+            - train for fit() method and total Gram matrix within predict(). This
+            is particularly useful when storing quantum kernel
+            matrices from real backends to numpy arrays.
         sigma: (float), default=1.e-6: Hyperparameter for the regularization strength;
                 must be a positive float.
                 This regularization improves the conditioning of the problem
                 and assure the solvability of the resulting
                 linear system. Larger values specify stronger regularization.
-        normalize_y: (bool), default=False: Whether or not to normalize
+        normalize_y: (bool), default=False: Whether to normalize
                 the target values y by removing the mean and scaling to
                 unit-variance. This is recommended for cases where zero-mean,
                 unit-variance priors are used. Note that, in this implementation,
-                the normalisation is reversed before the GP predictions are reported.
-        regularize: (string), default='full': enable full gram matrix regularization
-                or enable Tikhonov regularization via 'tikhonov'.
+                the normalization is reversed before the GP predictions are reported.
+        full_regularization: (bool), default=True: enable full gram matrix regularization.
+        **kwargs: Keyword arguments for the quantum kernel matrix, possible arguments can be obtained
+            by calling ``get_params()``. Can be used to set for example the number of qubits
+            (``num_qubits=``), or (if supported) the number of layers (``num_layers=``)
+            of the underlying encoding circuit.
 
     See Also
     --------
@@ -55,12 +65,12 @@ class QGPR(BaseEstimator, RegressorMixin):
     .. code-block::
 
         from squlearn import Executor
-        from squlearn.feature_map import QEKFeatureMap
+        from squlearn.encoding_circuit import QEKEncodingCircuit
         from squlearn.kernel.matrix import FidelityKernel
         from squlearn.kernel.ml import QGPR
-        fmap = QEKFeatureMap(num_qubits=num_qubits, num_features=num_features, num_layers=2)
-        q_kernel = FidelityKernel(feature_map=fmap, executor=Executor("statevector_simulator"))
-        q_kernel.assign_parameters(np.random.rand(fmap.num_parameters))
+        enc_circ = QEKEncodingCircuit(num_qubits=num_qubits, num_features=num_features, num_layers=2)
+        q_kernel = FidelityKernel(encoding_circuit=enc_circ, executor=Executor("statevector_simulator"))
+        q_kernel.assign_parameters(np.random.rand(enc_circ.num_parameters))
         qgpr_ansatz = QGPR(quantum_kernel=q_kernel)
         qgpr_ansatz.fit(sample_train,label_train)
         qgpr_ansatz.predict(sample_test)
@@ -71,30 +81,39 @@ class QGPR(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        quantum_kernel: KernelMatrixBase,
-        sigma=1.0e-6,
-        normalize_y=False,
-        regularize="full",
+        quantum_kernel: Optional[Union[KernelMatrixBase, str]] = None,
+        sigma: float = 1.0e-6,
+        normalize_y: bool = False,
+        full_regularization: bool = True,
+        **kwargs,
     ):
         self._quantum_kernel = quantum_kernel
         self.X_train = None
         self.y_train = None
         self.sigma = sigma
         self.normalize_y = normalize_y
-        self.regularize = regularize
+        self.full_regularization = full_regularization
+
         self.K_train = None
         self.K_test = None
         self.K_testtrain = None
         self._L = None
         self._alpha = None
 
-    def fit(self, X_train, y_train):
+        # Apply kwargs to set_params
+        update_params = self.get_params().keys() & kwargs.keys()
+        if update_params:
+            self.set_params(**{key: kwargs[key] for key in update_params})
+
+    def fit(self, X_train: np.ndarray, y_train: np.ndarray):
         """Fit Quantum Gaussian process regression model.
         The fit method of the QGPR class just calculates the training kernel matrix.
         Depending on the choice of normalize_y the target values are normalized.
 
         Args:
-            X_train: The training data of shape (n_samples, n_features)
+            X_train: The training data of shape (n_samples, n_features). If
+                quantum_kernel == "precomputed" this is instead a precomputed training kernel
+                matrix of shape (n_samples, n_samples)
             y_train: Target values in training data of shape (n_samples,)
 
         Returns:
@@ -102,7 +121,29 @@ class QGPR(BaseEstimator, RegressorMixin):
             QuantumGaussianProcessRegressor class instance.
         """
         self.X_train = X_train
-        self.K_train = self._quantum_kernel.evaluate(x=self.X_train)
+
+        if isinstance(self._quantum_kernel, str):
+            if self._quantum_kernel == "precomputed":
+                self.K_train = X_train
+            else:
+                raise ValueError("Unknown quantum kernel: {}".format(self._quantum_kernel))
+        elif isinstance(self._quantum_kernel, KernelMatrixBase):
+            if self.full_regularization:
+                if self._quantum_kernel._regularization is not None:
+                    warnings.warn(
+                        f"The regularization of the quantum kernel is set to"
+                        f" {self._quantum_kernel._regularization}. If full_regularization"
+                        f"is True, best results are achieved with no additional quantum "
+                        f"kernel regularization."
+                    )
+                self.K_train = self._quantum_kernel.evaluate(x=self.X_train)
+            else:
+                self.K_train = self._quantum_kernel.evaluate(x=self.X_train)
+        else:
+            raise ValueError(
+                "Unknown type of quantum kernel: {}".format(type(self._quantum_kernel))
+            )
+
         if self.normalize_y:
             self._y_train_mean = np.mean(y_train, axis=0)
             self._y_train_std = _handle_zeros_in_scale(np.std(y_train, axis=0), copy=False)
@@ -111,35 +152,26 @@ class QGPR(BaseEstimator, RegressorMixin):
             self.y_train = y_train
         return self
 
-    # needed to be an "official" sklearn estimator
-    def get_params(self, deep=True):
-        return {
-            "quantum_kernel": self._quantum_kernel,
-            "sigma": self.sigma,
-            "normalize_y": self.normalize_y,
-        }
-
-    def set_params(self, **parameters):
-        for parameter, value in parameters.items():
-            setattr(self, parameter, value)
-        return self
-
-    def predict(self, X_test, return_std=True, return_cov=False):
-        """Predict using the  Quantum Gaussian process regression model.
-        Depending on the choice of regularize the quantum kernel matrix is regularized.
+    def predict(self, X_test, return_std=False, return_cov=False):
+        """
+        Predict using the  Quantum Gaussian process regression model.
+        Depending on the choice of regularization the quantum kernel matrix is regularized.
         The respective solution of the QKRR problem
         is obtained by solving the linear system using scipy's Cholesky decomposition for
-        providing numercial stability
+        providing numerical stability
         Optionally also
         returns its standard deviation (`return_std=True`) or covariance
         (`return_cov=True`). Note that at most one of the two can be requested.
 
         Args:
-            X_test: The test data of shape (n_samples, n_features)
+            X_test: The test data of shape (n_samples, n_features). If
+                quantum_kernel == "precomputed", this is the precomputed
+                Gram matrix instead, which has to be of shape
+                np.block[[K_train, K_testtrain.T], [K_testtrain, K_test]]
             return_std: (bool),
-                default=True: Whether or not to return the standard deviation of the prediction
+                default=True: Whether to return the standard deviation of the prediction
             return_cov: (bool), default=False:
-                Whether or not to return the covariance of the prediction
+                Whether to return the covariance of the prediction
 
         Returns:
             y_mean: The predicted values of shape (n_samples,)
@@ -154,25 +186,42 @@ class QGPR(BaseEstimator, RegressorMixin):
 
         if self.K_train is None:
             raise ValueError("There is no training data. Please call the fit method first.")
+        if return_std and return_cov:
+            raise ValueError(
+                "Only one of return_std or return_cov can be True. " "Currently both are True."
+            )
+        if isinstance(self._quantum_kernel, str):
+            if self._quantum_kernel == "precomputed":
+                warnings.warn(
+                    "Since the `precomputed´ option is set,"
+                    "please make sure providing the full Gram matrix"
+                    "as X_test."
+                )
+                # obtain train and test dimensions
+                n_train = self.y_train.shape[0]
+                n_test = X_test.shape[0] - n_train
+                self.K_test = X_test[-n_test:, -n_test:]
+                self.K_testtrain = X_test[n_train:, :n_train]
+            else:
+                raise ValueError("Unknown quantum kernel: {}".format(self._quantum_kernel))
+        elif isinstance(self._quantum_kernel, KernelMatrixBase):
+            self.K_test = self._quantum_kernel.evaluate(x=X_test)
+            self.K_testtrain = self._quantum_kernel.evaluate(x=X_test, y=self.X_train)
+        else:
+            raise ValueError(
+                "Unknown type of quantum kernel: {}".format(type(self._quantum_kernel))
+            )
 
-        self.K_test = self._quantum_kernel.evaluate(x=X_test)
-
-        self.K_testtrain = self._quantum_kernel.evaluate(x=X_test, y=self.X_train)
-
-        if self.regularize == "full":
-            print("Regularizing full Gram matrix")
+        if self.full_regularization:
             self.K_train, self.K_testtrain, self.K_test = regularize_full_kernel(
                 self.K_train, self.K_testtrain, self.K_test
             )
-        elif self.regularize == "tikhonov":
-            print("Regularizing Gram matrix with Tikhonov")
-            self.K_train = tikhonov_regularization(self.K_train)
-            self.K_test = tikhonov_regularization(self.K_test)
+
         self.K_train += self.sigma * np.identity(self.K_train.shape[0])
+
         try:
             self._L = cholesky(self.K_train, lower=True)
         except np.linalg.LinAlgError:
-            print("corrected the train matrix a bit")
             self.K_train += 1e-8 * np.identity(self.K_train.shape[0])
             self._L = cholesky(self.K_train, lower=True)
         self._alpha = cho_solve((self._L, True), self.y_train)
@@ -196,19 +245,55 @@ class QGPR(BaseEstimator, RegressorMixin):
         QGP_cov = self.K_test - (self.K_testtrain @ v)
         return QGP_mean, QGP_cov
 
+    def get_params(self, deep: bool = True) -> dict:
+        """
+        Returns hyper-parameters and their values of the QGPR method.
 
-######
-# BACKUP FOR DOCUMENTATION
-# Attributes:
-#     ---------
-#         quantum_kernel (KernelMatrixBase):
-#   	  The quantum kernel matrix to be used in the QGPR pipeline
-#         X_train (np.ndarray): The training data (also required for prediction)
-#         y_train (np.ndarray): Target values in training data (also required for prediction)
-#         K_train: The kernel matrix of the training data
-#         K_test: The kernel matrix of the test data
-#         K_testtrain: The kernel matrix of the test and training data
-# Methods:
-#     fit(X_train, y_train): Fit the model to the training data.
-#     predict(X_test, return_std=True, return_cov=False):
-# Predict using the Gaussian process regression model.
+        Args:
+            deep (bool): If True, also the parameters for
+                         contained objects are returned (default=True).
+
+        Return:
+            Dictionary with hyper-parameters and values.
+        """
+        params = {
+            "quantum_kernel": self._quantum_kernel,
+            "sigma": self.sigma,
+            "normalize_y": self.normalize_y,
+            "full_regularization": self.full_regularization,
+        }
+        if deep and isinstance(self._quantum_kernel, KernelMatrixBase):
+            params.update(self._quantum_kernel.get_params(deep=deep))
+        return params
+
+    def set_params(self, **params) -> None:
+        """
+        Sets value of the encoding circuit hyper-parameters.
+
+        Args:
+            params: Hyper-parameters and their values, e.g. ``num_qubits=2``.
+        """
+        valid_params = self.get_params()
+        for key in params.keys():
+            if key not in valid_params:
+                raise ValueError(
+                    f"Invalid parameter {key!r}. "
+                    f"Valid parameters are {sorted(valid_params)!r}."
+                )
+
+        # Set parameters of the QGPR
+        self_params = self.get_params(deep=False).keys() & params.keys()
+        for key in self_params:
+            try:
+                setattr(self, key, params[key])
+            except AttributeError:
+                setattr(self, "_" + key, params[key])
+
+        if isinstance(self._quantum_kernel, KernelMatrixBase):
+            # Set parameters of the Quantum Kernel and its underlying objects
+            quantum_kernel_params = self._quantum_kernel.get_params().keys() & params.keys()
+            if quantum_kernel_params:
+                self._quantum_kernel.set_params(
+                    **{key: params[key] for key in quantum_kernel_params}
+                )
+        return self

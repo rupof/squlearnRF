@@ -24,19 +24,32 @@ classifiers = [
 ]
 keywords = ["quantum", "machine learning", "qml"]
 dependencies = [
+    "dill>=0.3",
     "numpy>=1.17",
+    "qiskit>=0.42.1",
+    "qiskit-aer>=0.12.0",
+    "qiskit-ibm-runtime>=0.9",
+    "qiskit-machine-learning>=0.6.0",
     "scipy>=1.5",
     "scikit-learn>=1.0",
-    "qiskit>=0.42.1",
-    "qiskit-machine-learning>=0.6.0",
-    "qiskit-ibm-runtime>=0.9",
-    "dill>=0.3",
+    "tqdm>=4.0",
 ]
 requires-python = ">=3.9"
 dynamic = ["version", "description"]
 
 [project.optional-dependencies]
-dev = ["pylint", "black", "pytest", "sphinx", "sphinx-rtd-theme", "flit"]
+dev = [
+    "black",
+    "flit",
+    "myst-parser",
+    "nbsphinx",
+    "nbsphinx_link",
+    "pylint",
+    "pytest",
+    "sphinx",
+    "sphinxcontrib-spelling",
+    "sphinx-rtd-theme",
+]
 examples = ["jupyter", "matplotlib>=3.5", "pylatexenc>=2.10"]
 
 [project.urls]

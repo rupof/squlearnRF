@@ -6,33 +6,44 @@ import numpy as np
 from typing import Optional, Union
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from .kernel_util import regularize_kernel, tikhonov_regularization
-
-# from ..kernel_util import KernelRegularizer, DepolarizingNoiseMitigation
+from ..matrix.regularization import thresholding_regularization, tikhonov_regularization
 
 
 class QKRR(BaseEstimator, RegressorMixin):
     """
-    Quantum Kernel Ridge Regression
+    Quantum Kernel Ridge Regression.
 
-    This class implements the Quantum Kernel Ridge Regression analogous to KRR [1] in sklearn
+    This class implements the Quantum Kernel Ridge Regression analogous to KRR [1] in scikit-learn
     but is not a wrapper.
     Read more about the theoretical background of KRR in, e.g., the
     `scikit-learn user guide <https://scikit-learn.org/stable/modules/kernel_ridge.html#kernel-ridge>`_.
+    Additional arguments can be set via ``**kwargs``.
 
     Args:
-        quantum_kernel (KernelMatrixBase) :
+        quantum_kernel (Optional[Union[KernelMatrixBase, str]]) :
             The quantum kernel matrix to be used in the KRR pipeline (either a fidelity
-            quantum kernel (FQK) or projected quantum kernel (PQK) must be provided)
+            quantum kernel (FQK) or projected quantum kernel (PQK) must be provided). By
+            setting quantum_kernel="precomputed", X is assumed to be a kernel matrix
+            (train and test-train). This is particularly useful when storing quantum kernel
+            matrices from real backends to numpy arrays.
         alpha (Union[float, np.ndarray], default=1.0e-6) :
             Hyperparameter for the regularization strength; must be a positive float. This
             regularization improves the conditioning of the problem and assure the solvability
             of the resulting linear system. Larger values specify stronger regularization, cf.,
             e.g., Ref. [2]
-        regularize  (Union[str, None], default=None) :
-            Option for choosing different regularization techniques ('thresholding' or 'tikhonov')
-            after Ref. [3] for the training kernel matrix, prior to  solving the linear system
-            in the ``fit()``-procedure.
+        **kwargs: Keyword arguments for the quantum kernel matrix, possible arguments can be obtained
+            by calling ``get_params()``. Can be used to set for example the number of qubits
+            (``num_qubits=``), or (if supported) the number of layers (``num_layers=``)
+            of the underlying encoding circuit.
+
+    Attributes:
+    -----------
+        dual_coeff\_ : (np.ndarray) :
+            Array containing the weight vector in kernel space
+        k_train (np.ndarray) :
+            Training kernel matrix of shape (n_train, n_train) which is available after calling the fit procedure
+        k_testtrain (np.ndarray) :
+            Kernel matrix of shape (n_test, n_train) which is evaluated at the predict step
 
     See Also
     --------
@@ -46,21 +57,19 @@ class QKRR(BaseEstimator, RegressorMixin):
 
         [2] https://en.wikipedia.org/wiki/Ridge_regression
 
-        [3] T. Hubregtsen et al., "Training Quantum Embedding Kernels on Near-Term Quantum Computers",
-        `arXiv:2105.02276v1 (2021) <https://arxiv.org/pdf/2105.02276.pdf>`_.
 
     **Example**
 
     .. code-block::
 
         from squlearn import Executor
-        from squlearn.feature_map import ChebPQC
+        from squlearn.encoding_circuit import ChebPQC
         from squlearn.kernel.matrix import ProjectedQuantumKernel
         from squlearn.kernel.ml import QKRR
 
-        fmap = ChebPQC(num_qubits=4, num_features=1, num_layers=2)
+        enc_circ = ChebPQC(num_qubits=4, num_features=1, num_layers=2)
         q_kernel_pqk = ProjectedQuantumKernel(
-            feature_map=fmap,
+            encoding_circuit=enc_circ,
             executor=Executor("statevector_simulator"),
             measurement="XYZ",
             outer_kernel="gaussian",
@@ -77,29 +86,35 @@ class QKRR(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        quantum_kernel: Optional[KernelMatrixBase] = None,
+        quantum_kernel: Optional[Union[KernelMatrixBase, str]] = None,
         alpha: Union[float, np.ndarray] = 1.0e-6,
-        regularize: Union[str, None] = None,
+        **kwargs,
     ) -> None:
-        self._quantum_kernel = quantum_kernel  # May be worth to set FQK as default here?
+        self._quantum_kernel = quantum_kernel
         self.alpha = alpha
-        self._regularize = regularize
         self.x_train = None
         self.k_testtrain = None
         self.k_train = None
         self.dual_coeff_ = None
-        self.num_qubits = self._quantum_kernel.num_qubits
+
+        # Apply kwargs to set_params
+        update_params = self.get_params().keys() & kwargs.keys()
+        if update_params:
+            self.set_params(**{key: kwargs[key] for key in update_params})
 
     def fit(self, x_train: np.ndarray, y_train: np.ndarray):
         """
-        Fit the Quantum Kernel Ridge regression model. Depending on whether ``regularize``
-        is set, the training kernel matrix is pre-processed accordingly prior to the
-        actual fitting step is performed. The respective solution of the QKRR problem
-        is obtained by solving the linear system using scipy's Cholesky decomposition for
-        providing numercial stability
+        Fit the Quantum Kernel Ridge regression model.
+
+        Depending on whether ``regularization`` is set, the training kernel matrix is pre-processed
+        accordingly prior to the actual fitting step is performed. The respective solution of the
+        QKRR problem is obtained by solving the linear system using scipy's Cholesky decomposition
+        for providing numerical stability.
 
         Args:
-            x_train (np.ndarray) : Training data of shape (n_samples, n_features)
+            x_train (np.ndarray) : Training data of shape (n_samples, n_features). If
+                quantum_kernel == "precomputed" this is instead a precomputed training kernel
+                matrix of shape (n_samples, n_samples).
             y_train (np.ndarray) : Target values or labels of shape (n_samples,)
 
         Returns:
@@ -107,13 +122,18 @@ class QKRR(BaseEstimator, RegressorMixin):
                 Returns the instance itself.
         """
         self.x_train = x_train
-        self.k_train = self._quantum_kernel.evaluate(x=self.x_train)  # set up kernel matrix
-        # check if regularize argument is set and define corresponding method
-        if self._regularize is not None:
-            if self._regularize == "thresholding":
-                self.k_train = regularize_kernel(self.k_train)
-            elif self._regularize == "tikhonov":
-                self.k_train = tikhonov_regularization(self.k_train)
+
+        if isinstance(self._quantum_kernel, str):
+            if self._quantum_kernel == "precomputed":
+                self.k_train = x_train
+            else:
+                raise ValueError("Unknown quantum kernel: {}".format(self._quantum_kernel))
+        elif isinstance(self._quantum_kernel, KernelMatrixBase):
+            self.k_train = self._quantum_kernel.evaluate(x=self.x_train)  # set up kernel matrix
+        else:
+            raise ValueError(
+                "Unknown type of quantum kernel: {}".format(type(self._quantum_kernel))
+            )
 
         self.k_train = self.k_train + self.alpha * np.eye(self.k_train.shape[0])
 
@@ -132,7 +152,9 @@ class QKRR(BaseEstimator, RegressorMixin):
 
         Args:
             x_test (np.ndarray) : Samples of data of shape (n_samples, n_features) on which QKRR
-                model makes predictions.
+                model makes predictions. If quantum_kernel == "precomputed" this is instead a
+                precomputed (test-train) kernel matrix of shape (n_samples, n_samples_fitted),
+                where n_samples_fitted is the number of samples used in the fitting.
 
         Returns:
             np.ndarray :
@@ -141,39 +163,67 @@ class QKRR(BaseEstimator, RegressorMixin):
         if self.k_train is None:
             raise ValueError("The fit() method has to be called beforehand.")
 
-        self.k_testtrain = self._quantum_kernel.evaluate(x_test, self.x_train)
+        if isinstance(self._quantum_kernel, str):
+            if self._quantum_kernel == "precomputed":
+                self.k_testtrain = x_test
+        elif isinstance(self._quantum_kernel, KernelMatrixBase):
+            self.k_testtrain = self._quantum_kernel.evaluate(x_test, self.x_train)
+        else:
+            raise ValueError(
+                "Unknown type of quantum kernel: {}".format(type(self._quantum_kernel))
+            )
+
         prediction = np.dot(self.k_testtrain, self.dual_coeff_)
         return prediction
 
-    # All scikit-learn estimators have get_params and set_params
-    # (cf. https://scikit-learn.org/stable/developers/develop.html)
-    def get_params(self, deep: bool = True):
-        return {
+    def get_params(self, deep: bool = True) -> dict:
+        """
+        Returns hyperparameters and their values of the QKRR method.
+
+        Args:
+            deep (bool): If True, also the parameters for
+                         contained objects are returned (default=True).
+
+        Return:
+            Dictionary with hyperparameters and values.
+        """
+        params = {
             "quantum_kernel": self._quantum_kernel,
             "alpha": self.alpha,
-            "regularize": self._regularize,
         }
 
-    def set_params(self, **parameters):
-        for parameter, value in parameters.items():
-            setattr(self, parameter, value)
+        if deep and isinstance(self._quantum_kernel, KernelMatrixBase):
+            params.update(self._quantum_kernel.get_params(deep=deep))
+        return params
+
+    def set_params(self, **params) -> None:
+        """
+        Sets value of the encoding circuit hyperparameters.
+
+        Args:
+            params: Hyperparameters and their values, e.g. ``num_qubits=2``.
+        """
+        valid_params = self.get_params()
+        for key in params.keys():
+            if key not in valid_params:
+                raise ValueError(
+                    f"Invalid parameter {key!r}. "
+                    f"Valid parameters are {sorted(valid_params)!r}."
+                )
+
+        # Set parameters of the QKRR
+        self_params = self.get_params(deep=False).keys() & params.keys()
+        for key in self_params:
+            try:
+                setattr(self, key, params[key])
+            except AttributeError:
+                setattr(self, "_" + key, params[key])
+
+        if isinstance(self._quantum_kernel, KernelMatrixBase):
+            # Set parameters of the Quantum Kernel and its underlying objects
+            quantum_kernel_params = self._quantum_kernel.get_params().keys() & params.keys()
+            if quantum_kernel_params:
+                self._quantum_kernel.set_params(
+                    **{key: params[key] for key in quantum_kernel_params}
+                )
         return self
-
-
-######
-# BACKUP FOR DOCUMENTATION
-# Attributes:
-#         _regularize (Union[str, None]) :
-#             Applied regularization technique
-#         x_train (np.ndarray) :
-#             Training data, which is also required for the prediction step of shape +
-#             (n_samples, n_features)
-#         k_train (np.ndarray) :
-#             Training Kernel matrix, which is a square-symmetric matrix of shape (n_train, natrain)
-#             required for the ``fit()`` step
-#         k_testtrain (np.ndarray) :
-#             Test-training matrix of shape (n_test, n_train) required for prediction step
-#         dual_coeff_ (np.ndarray) :
-#             Representation of weight vectors in kernel space
-#         num_qubits (int) :
-#             Number of qubits

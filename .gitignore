@@ -71,6 +71,7 @@ instance/
 # Sphinx documentation
 docs/_build/
 docs/modules/generated/*
+docs/examples/images
 
 # PyBuilder
 .pybuilder/
@@ -165,3 +166,6 @@ cython_debug/
 
 #Example logs
 examples/qnn/*_log.csv
+
+# Genereated doc images
+docs/examples/images/*

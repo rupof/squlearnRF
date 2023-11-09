@@ -1,13 +1,16 @@
 """QNN Base Implemenation"""
+from __future__ import annotations
+
+from abc import abstractmethod, ABC
 from typing import Callable, Union
 from warnings import warn
 
-from abc import abstractmethod, ABC
 import numpy as np
 from sklearn.base import BaseEstimator
 
-from ..expectation_operator.expectation_operator_base import ExpectationOperatorBase
-from ..feature_map.feature_map_base import FeatureMapBase
+
+from ..observables.observable_base import ObservableBase
+from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ..optimizers.optimizer_base import OptimizerBase, SGDMixin
 from ..util import Executor
 
@@ -20,26 +23,29 @@ class BaseQNN(BaseEstimator, ABC):
     """Base Class for Quantum Neural Networks.
 
     Args:
-        pqc : Parameterized quantum circuit in feature map format
+        encoding_circuit : Parameterized quantum circuit in encoding circuit format
         operator : Operator that are used in the expectation value of the QNN. Can be a list for
             multiple outputs.
         executor : Executor instance
         optimizer : Optimizer instance
         param_ini : Initialization values of the parameters of the PQC
         param_op_ini : Initialization values of the cost operator
-        batch_size : Number of datapoints in each batch, for SGDMixin optimizers
+        batch_size : Number of data points in each batch, for SGDMixin optimizers
         epochs : Number of epochs of SGD to perform, for SGDMixin optimizers
-        shuffle : If True, datapoints get shuffled before each epoch (default: False),
+        shuffle : If True, data points get shuffled before each epoch (default: False),
             for SGDMixin optimizers
         opt_param_op : If True, operators parameters get optimized
         variance : Variance factor
         parameter_seed : Seed for the random number generator for the parameter initialization
+        callback (Union[Callable, str, None], default=None): A callback for the optimization loop.
+            Can be either a Callable, "pbar" (which uses a :class:`tqdm.tqdm` process bar) or None.
+            If None, the optimizers (default) callback will be used.
     """
 
     def __init__(
         self,
-        pqc: FeatureMapBase,
-        operator: Union[ExpectationOperatorBase, list[ExpectationOperatorBase]],
+        encoding_circuit: EncodingCircuitBase,
+        operator: Union[ObservableBase, list[ObservableBase]],
         executor: Executor,
         loss: LossBase,
         optimizer: OptimizerBase,
@@ -52,9 +58,11 @@ class BaseQNN(BaseEstimator, ABC):
         variance: Union[float, Callable] = None,
         shot_adjusting: shot_adjusting_options = None,
         parameter_seed: Union[int, None] = 0,
+        callback: Union[Callable, str, None] = None,
+        **kwargs,
     ) -> None:
         super().__init__()
-        self.pqc = pqc
+        self.encoding_circuit = encoding_circuit
         self.operator = operator
         self.loss = loss
         self.optimizer = optimizer
@@ -62,21 +70,24 @@ class BaseQNN(BaseEstimator, ABC):
         self.parameter_seed = parameter_seed
 
         if param_ini is None:
-            self.param_ini = pqc.generate_initial_parameters(seed=parameter_seed)
+            self.param_ini = encoding_circuit.generate_initial_parameters(seed=parameter_seed)
         else:
             self.param_ini = param_ini
-        self.param = self.param_ini.copy()
+        self._param = self.param_ini.copy()
 
         if param_op_ini is None:
             if isinstance(operator, list):
                 self.param_op_ini = np.concatenate(
-                    [op.generate_initial_parameters(seed=parameter_seed) for op in operator]
+                    [
+                        operator.generate_initial_parameters(seed=parameter_seed)
+                        for operator in operator
+                    ]
                 )
             else:
                 self.param_op_ini = operator.generate_initial_parameters(seed=parameter_seed)
         else:
             self.param_op_ini = param_op_ini
-        self.param_op = self.param_op_ini.copy()
+        self._param_op = self.param_op_ini.copy()
 
         if not isinstance(optimizer, SGDMixin) and any(
             param is not None for param in [batch_size, epochs, shuffle]
@@ -94,9 +105,40 @@ class BaseQNN(BaseEstimator, ABC):
         self.shot_adjusting = shot_adjusting
 
         self.executor = executor
-        self._qnn = QNN(self.pqc, self.operator, executor)
+        self._qnn = QNN(self.encoding_circuit, self.operator, executor)
+
+        self.callback = callback
+
+        if self.callback:
+            if callable(self.callback):
+                self.optimizer.set_callback(self.callback)
+            elif self.callback == "pbar":
+                self._pbar = None
+
+                def pbar_callback(*args):
+                    self._pbar.update(1)
+
+                self.optimizer.set_callback(pbar_callback)
+            elif isinstance(self.callback, str):
+                raise ValueError(f"Unknown callback string value {self.callback}")
+            else:
+                raise TypeError(f"Unknown callback type {type(self.callback)}")
+
+        update_params = self.get_params().keys() & kwargs.keys()
+        if update_params:
+            self.set_params(**{key: kwargs[key] for key in update_params})
 
         self._is_fitted = False
+
+    @property
+    def param(self) -> np.ndarray:
+        """Parameters of the PQC."""
+        return self._param
+
+    @property
+    def param_op(self) -> np.ndarray:
+        """Parameters of the cost operator."""
+        return self._param_op
 
     def fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None) -> None:
         """Fit a new model to data.
@@ -106,12 +148,84 @@ class BaseQNN(BaseEstimator, ABC):
         Args:
             X: Input data
             y: Labels
-            weights: Weights for each datapoint
+            weights: Weights for each data point
         """
-        self.param = self.param_ini.copy()
-        self.param_op = self.param_op_ini.copy()
+        self._param = self.param_ini.copy()
+        self._param_op = self.param_op_ini.copy()
         self._is_fitted = False
         self._fit(X, y, weights)
+
+    def get_params(self, deep: bool = True) -> dict:
+        """
+        Returns a dictionary of parameters for the current object.
+
+        Parameters:
+            deep: If True, includes the parameters from the base class.
+
+        Returns:
+            dict: A dictionary of parameters for the current object.
+        """
+        # Create a dictionary of all public parameters
+        params = super().get_params(deep=False)
+
+        if deep:
+            params.update(self._qnn.get_params(deep=True))
+        return params
+
+    def set_params(self: BaseQNN, **params) -> BaseQNN:
+        """
+        Sets the hyper-parameters of the BaseQNN.
+
+        Args:
+            params: Hyper-parameters of the BaseQNN.
+
+        Returns:
+            updated BaseQNN
+        """
+        # Create dictionary of valid parameters
+        valid_params = self.get_params().keys()
+        for key in params.keys():
+            # Check if parameter is valid
+            if key not in valid_params:
+                raise ValueError(
+                    f"Invalid parameter {key!r}. "
+                    f"Valid parameters are {sorted(valid_params)!r}."
+                )
+
+        # Set parameters
+        self_params = params.keys() & self.get_params(deep=False).keys()
+        for key in self_params:
+            setattr(self, key, params[key])
+
+        # Set parameters of the QNN
+        qnn_params = params.keys() & self._qnn.get_params(deep=True).keys()
+        if qnn_params:
+            self._qnn.set_params(**{key: params[key] for key in qnn_params})
+
+            # If the number of parameters has changed, reinitialize the parameters
+            if self.encoding_circuit.num_parameters != len(self.param_ini):
+                self.param_ini = self.encoding_circuit.generate_initial_parameters(
+                    seed=self.parameter_seed
+                )
+            if isinstance(self.operator, list):
+                num_op_parameters = sum(operator.num_parameters for operator in self.operator)
+                if num_op_parameters != len(self.param_op_ini):
+                    self.param_op_ini = np.concatenate(
+                        [
+                            operator.generate_initial_parameters(seed=self.parameter_seed)
+                            for operator in self.operator
+                        ]
+                    )
+            elif self.operator.num_parameters != len(self.param_op_ini):
+                self.param_op_ini = self.operator.generate_initial_parameters(
+                    seed=self.parameter_seed
+                )
+            if isinstance(self.optimizer, SGDMixin):
+                self.optimizer.reset()
+
+        self._is_fitted = False
+
+        return self
 
     @abstractmethod
     def _fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None) -> None:

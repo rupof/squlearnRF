@@ -1,7 +1,8 @@
 from typing import Union
 import numpy as np
 
-from ...feature_map.feature_map_base import FeatureMapBase
+from .regularization import thresholding_regularization, tikhonov_regularization
+from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ...util.executor import Executor
 
 
@@ -10,80 +11,90 @@ class KernelMatrixBase:
     Base class for defining quantum kernels.
 
     Args:
-        feature_map (FeatureMapBase) :
-            PQC feature map
+        encoding_circuit (EncodingCircuitBase) :
+            PQC encoding circuit
         executor (Executor) :
             Executor object
         initial_parameters (Union[np.ndarray, None], default=None) :
-            Initial parameters of the PQC feature map
+            Initial parameters of the PQC encoding circuit
+        parameter_seed (Union[int, None], default=0) :
+            Seed for the random number generator for the parameter initialization, if
+            initial_parameters is None.
+        regularization  (Union[str, None], default=None):
+            Str that specifies the method with which the kernel matrix should be regularized.
+            See method attribute from KernMatrixBase._regularize_matrix() method for valid
+            options.
     """
 
     def __init__(
         self,
-        feature_map: FeatureMapBase,
+        encoding_circuit: EncodingCircuitBase,
         executor: Executor,
         initial_parameters: Union[np.ndarray, None] = None,
         parameter_seed: Union[int, None] = 0,
+        regularization: Union[str, None] = None,
     ) -> None:
-        self._feature_map = feature_map
-        self._num_qubits = self._feature_map.num_qubits
+        self._encoding_circuit = encoding_circuit
+        self._num_qubits = self._encoding_circuit.num_qubits
         self._executor = executor
         self._parameters = initial_parameters
         self._parameter_seed = parameter_seed
+        self._regularization = regularization
 
         if self._parameters is None:
-            self._parameters = self._feature_map.generate_initial_parameters(self._parameter_seed)
+            self._parameters = self._encoding_circuit.generate_initial_parameters(
+                self._parameter_seed
+            )
 
     @property
-    def feature_map(self) -> FeatureMapBase:
+    def encoding_circuit(self) -> EncodingCircuitBase:
         """
-        Returns the feature map from which the kernel matrix is constructed
+        Returns the encoding circuit from which the kernel matrix is constructed
         """
-        return self._feature_map
+        return self._encoding_circuit
 
     @property
     def num_qubits(self) -> int:
-        """Returns the number of qubits used in the definition of the feature map."""
+        """Returns the number of qubits used in the definition of the encoding circuit."""
         return self._num_qubits
 
     @property
     def num_features(self) -> int:
-        """Returns the feature dimension of the feature map"""
-        return self._feature_map.num_features
+        """Returns the feature dimension of the encoding circuit"""
+        return self._encoding_circuit.num_features
 
     @property
     def parameters(self) -> np.ndarray:
         """
         Returns the numeric values of the trainable parameters assigned to the
-        feature map as np.ndarray
+        encoding circuit as np.ndarray
         """
         return self._parameters
 
     @property
     def num_parameters(self) -> int:
-        """Returns the number of trainable parameters of the feature map."""
-        return self._feature_map.num_parameters
+        """Returns the number of trainable parameters of the encoding circuit."""
+        return self._encoding_circuit.num_parameters
 
     @property
     def parameter_bounds(self) -> np.ndarray:
-        """The bounds of the trainable parameters of the feature map."""
-        return self._feature_map.parameter_bounds
+        """The bounds of the trainable parameters of the encoding circuit."""
+        return self._encoding_circuit.parameter_bounds
 
     @property
     def feature_bounds(self) -> np.ndarray:
-        """The bounds of the features of the feature map."""
-        return self._feature_map.feature_bounds
+        """The bounds of the features of the encoding circuit."""
+        return self._encoding_circuit.feature_bounds
 
     def evaluate(self, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
         """
-        Computes and the quantum kernel matrix.
+        Computes the quantum kernel matrix.
 
         Args:
             x (np.ndarray) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
             y (np.ndarray, default=None) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
-
+                Vector of training or test data for which the kernel matrix is evaluated
         Returns:
             Returns the quantum kernel matrix as 2D numpy array.
         """
@@ -95,9 +106,9 @@ class KernelMatrixBase:
 
         Args:
             x (np.ndarray) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
             y (np.ndarray, default=None) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
         """
         if y is not None:
             return self.evaluate([x], [y])[0, 0]
@@ -106,12 +117,12 @@ class KernelMatrixBase:
 
     def assign_parameters(self, parameters):
         """
-        Fix the training parameters of the feature map to numerical values
+        Fix the training parameters of the encoding circuit to numerical values
 
         Args:
             parameters (np.ndarray) :
-                Array contraining numerical values to be assigned to the trainable parameters
-                of the feature map
+                Array containing numerical values to be assigned to the trainable parameters
+                of the encoding circuit
         """
         self._parameters = parameters
 
@@ -123,12 +134,12 @@ class KernelMatrixBase:
 
         Args:
             x (np.ndarray) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
             y (np.ndarray) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
             parameters (np.ndarray) :
-                Array contraining numerical values to be assigned to the trainable parameters
-                of the feature map
+                Array containing numerical values to be assigned to the trainable parameters
+                of the encoding circuit
         """
         self.assign_parameters(parameters)
         return self.evaluate(x, y)
@@ -138,14 +149,14 @@ class KernelMatrixBase:
         Overwrites the a + b function, such that the addition of
         quantum kernels returns the composition of both quantum kernels.
 
-        Number of  features have to be equal in both feature maps!
+        Number of  features have to be equal in both encoding circuits!
 
         Args:
             self (KernelMatrixBase): first quantum kernel
             x (KernelMatrixBase): second quantum kernel
 
         Returns:
-            Returns the composed feature map as special class _ComposedKernelMatrix
+            Returns the composed encoding circuit as special class _ComposedKernelMatrix
         """
         return _ComposedKernelMatrix(self, x, "+")
 
@@ -154,14 +165,14 @@ class KernelMatrixBase:
         Overwrites the a * b function, such that the multiplication of
         quantum kernels returns the composition of both quantum kernels.
 
-        Number of  features have to be equal in both feature maps!
+        Number of  features have to be equal in both encoding circuits!
 
         Args:
             self (KernelMatrixBase): first quantum kernel
             x (KernelMatrixBase): second quantum kernel
 
         Returns:
-            Returns the composed feature map as special class _ComposedKernelMatrix
+            Returns the composed encoding circuit as special class _ComposedKernelMatrix
         """
         return _ComposedKernelMatrix(self, x, "*")
 
@@ -170,14 +181,14 @@ class KernelMatrixBase:
         Overwrites the a - b function, such that the subtraction of
         quantum kernels returns the composition of both quantum kernels.
 
-        Number of  features have to be equal in both feature maps!
+        Number of  features have to be equal in both encoding circuits!
 
         Args:
             self (KernelMatrixBase): first quantum kernel
             x (KernelMatrixBase): second quantum kernel
 
         Returns:
-            Returns the composed feature map as special class _ComposedKernelMatrix
+            Returns the composed encoding circuit as special class _ComposedKernelMatrix
         """
         return _ComposedKernelMatrix(self, x, "-")
 
@@ -186,14 +197,14 @@ class KernelMatrixBase:
         Overwrites the a / b function, such that the division of
         quantum kernels returns the composition of both quantum kernels.
 
-        Number of  features have to be equal in both feature maps!
+        Number of  features have to be equal in both encoding circuits!
 
         Args:
             self (KernelMatrixBase): first quantum kernel
             x (KernelMatrixBase): second quantum kernel
 
         Returns:
-            Returns the composed feature map as special class _ComposedKernelMatrix
+            Returns the composed encoding circuit as special class _ComposedKernelMatrix
         """
         return _ComposedKernelMatrix(self, x, "/")
 
@@ -208,16 +219,41 @@ class KernelMatrixBase:
         Return:
             Dictionary with hyper-parameters and values.
         """
-        raise NotImplementedError()
+        # Create a dictionary of all public parameters
+        params = {"encoding_circuit": self._encoding_circuit, "executor": self._executor}
+
+        if deep:
+            params.update(self._encoding_circuit.get_params(deep=True))
+        return params
 
     def set_params(self, **params):
         """
         Sets value of the fidelity kernel hyper-parameters.
 
         Args:
-            params: Hyper-parameters and their values, e.g. num_qubits=2
+            params: Hyper-parameters and their values, e.g. ``num_qubits=2``
         """
         raise NotImplementedError()
+
+    def _regularize_matrix(self, matrix: np.ndarray) -> np.ndarray:
+        """
+        Regularizes the quantum kernel matrix according to the sepcified method.
+
+        Args:
+            matrix (np.ndarray) :
+                Gram matrix to be regularized
+            method (str) :
+                Can be either thresholding or tikhonov. For more information see
+                squlearn.kernel.matrix.regularization
+        """
+        if self._regularization == "thresholding":
+            return thresholding_regularization(matrix)
+        elif self._regularization == "tikhonov":
+            return tikhonov_regularization(matrix)
+        else:
+            raise AttributeError(
+                "If regularization is not none it must be either thresholding or tikhonov"
+            )
 
 
 class _ComposedKernelMatrix(KernelMatrixBase):
@@ -229,22 +265,26 @@ class _ComposedKernelMatrix(KernelMatrixBase):
             first kernel matrix
         km2 (KernelMatrixBase) :
             second kernel matrix
+        regularization (str, None) :
+            Str that specifies the method with which the kernel matrix should be regularized.
+            See method attribute from KernMatrixBase._regularize_matrix() method for valid
+            options.
     """
 
     def __init__(self, km1: KernelMatrixBase, km2: KernelMatrixBase, composition: str = "*"):
         if km1.num_features != km2.num_features:
-            raise ValueError("Feature dimension is not equal in both feature maps.")
+            raise ValueError("Feature dimension is not equal in both encoding circuits.")
 
         self._km1 = km1
         self._km2 = km2
         self._composition = composition
 
     @property
-    def feature_map(self) -> FeatureMapBase:
+    def encoding_circuit(self) -> EncodingCircuitBase:
         """
-        Returns the feature map from which the kernel matrix is constructed
+        Returns the encoding circuit from which the kernel matrix is constructed
         """
-        raise RuntimeError("The feature map is not available for composed kernel matrices")
+        raise RuntimeError("The encoding circuit is not available for composed kernel matrices")
 
     @property
     def num_qubits(self) -> int:
@@ -281,11 +321,10 @@ class _ComposedKernelMatrix(KernelMatrixBase):
     def parameters(self) -> np.ndarray:
         """
         The numeric values of the trainable parameters assigned to the
-        feature map as np.ndarray
+        encoding circuit as np.ndarray
         """
         if self._km1.parameters is not None and self._km2.parameters is not None:
             return np.concatenate((self._km1.parameters, self._km2.parameters))
-        return None
 
     def get_params(self, deep: bool = True) -> dict:
         """
@@ -318,7 +357,7 @@ class _ComposedKernelMatrix(KernelMatrixBase):
         Sets value of the composed kernel hyper-parameters.
 
         Args:
-            params: Hyper-parameters and their values, e.g. num_qubits=2
+            params: Hyper-parameters and their values, e.g. ``num_qubits=2``
         """
         valid_params = self.get_params()
         km1_dict = {}
@@ -347,10 +386,9 @@ class _ComposedKernelMatrix(KernelMatrixBase):
 
         Args:
             x (np.ndarray) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
+                Vector of training or test data for which the kernel matrix is evaluated
             y (np.ndarray, default=None) :
-                Vecotr of training or test data for which the kernel matrix is evaluated
-
+                Vector of training or test data for which the kernel matrix is evaluated
         Returns:
             Returns the quantum kernel matrix as 2D numpy array.
         """
