@@ -9,6 +9,11 @@ from squlearn.expectation_operator import CustomExpectationOperator
 
 
 def generate_combinations(string_len, n_elements, symbol):
+    """
+    Generates all possible combinations of a given number of elements in a string of a given length.
+    example: 
+    generate_combinations(3, 2, "X") -> ["XXI", "IXX", "XIX"]
+    """
     # If the number of elements requested is greater than the string length,
     # it's not possible to form such combinations, so return an empty list.
     if n_elements > string_len:

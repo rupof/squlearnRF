@@ -46,7 +46,7 @@ def pca_sklearn(X, n_components):
     X_pca = pca.fit_transform(X)
     return X_pca
 
-def get_MNIST_pca_filtered_dataset(n, num_samples=40, pca=pca_sklearn, mnist=None, random_seed=1):
+def get_MNIST_pca_filtered_dataset(n, num_samples=40, pca=pca_sklearn, mnist=None, random_seed=1, binary_digits=['0', '1']):
     """
     Gets the MNIST dataset, performs PCA on it, and filters for only 0 and 1.
     Returning the projected dataset X_pca and the corresponding labels y.
@@ -65,7 +65,6 @@ def get_MNIST_pca_filtered_dataset(n, num_samples=40, pca=pca_sklearn, mnist=Non
     X_pca = pca(X, n)
 
     # Filter the dataset to include only "0" and "1" digits
-    binary_digits = ['0', '1']
     binary_indices = np.isin(y, binary_digits)
     X_pca_binary = X_pca[binary_indices]
     y_binary = y[binary_indices]
@@ -118,15 +117,15 @@ def get_filtered_MNIST_pca_dataset(n, num_samples= 40, pca=pca_sklearn):
 
     return X_pca, y_binary_f
 
-def hypercube_classifier(vector, half_width = np.pi):
+def hypercube_classifier(vector, outer_cube_half_width = np.pi):
     n = len(vector)
-    width = 2 * half_width / 2**(1/n)
+    inner_cube_width = 2 * outer_cube_half_width / 2**(1/n)
     for coordinate in vector:
-        if coordinate < -width/2 or coordinate > width/2:
-            return -1 
+        if coordinate < -inner_cube_width/2 or coordinate > inner_cube_width/2:
+            return  0
     return 1
 
-def get_hypercube_dataset(num_qubits, num_samples=100, half_width=np.pi, random_seed=None):
+def get_hypercube_dataset(num_features, num_samples=100, outer_cube_half_width=np.pi, random_seed=None):
     """
     Generates a dataset of num_samples points sampled uniformly from the hypercube [-1, 1]^num_qubits.
     If random_seed is not None, it will set the random seed for reproducibility.
@@ -134,8 +133,8 @@ def get_hypercube_dataset(num_qubits, num_samples=100, half_width=np.pi, random_
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    X = np.random.uniform(-half_width, half_width, (num_samples, num_qubits))
-    y = np.array([hypercube_classifier(vector, half_width) for vector in X])
+    X = np.random.uniform(-outer_cube_half_width, outer_cube_half_width, (num_samples, num_features))
+    y = np.array([hypercube_classifier(vector, outer_cube_half_width) for vector in X])
     return X, y
 
 def filter_two_numbers(x, y, a, b):
