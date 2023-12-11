@@ -2,9 +2,9 @@ import numpy as np
 
 
 from qiskit.quantum_info import Statevector, partial_trace
-from squlearn.feature_map import *
+from squlearn.encoding_circuit import *
 from itertools import combinations
-from squlearn.expectation_operator import CustomExpectationOperator
+from squlearn.observables import CustomObservable
 
 
 
@@ -63,7 +63,7 @@ def generate_n_density_reduced_matrices(num_qubits, nDRM, basis  ):
         measurements = X_measurements
         
     for i in range(len(measurements)):
-        measurements[i] = CustomExpectationOperator(num_qubits, measurements[i])
+        measurements[i] = CustomObservable(num_qubits, measurements[i])
     return measurements
 
 def meyer_wallach_given_circuit(circuit, num_qubits):

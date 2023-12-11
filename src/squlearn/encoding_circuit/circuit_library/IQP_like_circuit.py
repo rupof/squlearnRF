@@ -5,9 +5,10 @@ from qiskit.circuit import ParameterVector
 from qiskit import QuantumCircuit
 
 from ..encoding_circuit_base import EncodingCircuitBase
+from functools import reduce
 
 
-class HardwareEfficientEmbeddingCircuit(EncodingCircuitBase):
+class IQPLikeCircuit(EncodingCircuitBase):
     """
     Creates a feature map based on the hardware efficient embedding as described in arXiv:2208.11060v1 
 
@@ -26,20 +27,18 @@ class HardwareEfficientEmbeddingCircuit(EncodingCircuitBase):
         self,
         num_qubits: int,
         num_layers: int = 1,
-        rotation_gate: str = "rx",
     ) -> None:
         super().__init__(num_qubits, num_qubits)
         self.num_layers = num_layers
-        self.rotation_gate = rotation_gate
 
     @property
     def num_parameters(self) -> int:
-        return 0    
-
+        return 1    
+    
     def get_circuit(
         self,
         features: Union[ParameterVector, np.ndarray],
-        parameters: Union[ParameterVector, np.ndarray],
+        parameters: Union[ParameterVector, np.ndarray] = [1],
     ) -> QuantumCircuit:
         """
         Returns the circuit of the HardwareEfficientEmbedding feature map
@@ -53,33 +52,23 @@ class HardwareEfficientEmbeddingCircuit(EncodingCircuitBase):
         Return:
             Returns the circuit in Qiskit's QuantumCircuit format
         """
+        from qiskit.circuit.library import ZZFeatureMap
+        
+        def self_product(self, *args):
+            """
+            adapted from https://github.com/rsln-s/Importance-of-Kernel-Bandwidth-in-Quantum-Machine-Learning/blob/main/code/utils.py
+            Define a function map from R^n to R.
 
-        QC = QuantumCircuit(self.num_qubits)
-        #C = parameters[0]
-        def h_rz_gate(theta, qubit):
-            QC.h(qubit)
-            QC.rz(theta, qubit)
+            Args:
+                x: data
 
-        gate_mapping = {
-            'rx': QC.rx,
-            'ry': QC.ry,
-            'rz': QC.rz,
-            'h_rz': h_rz_gate
-        }
+            Returns:
+                float: the mapped value
+            """
+            return np.prod(np.array(args))*parameters[0]
 
-
-        rotation_func = gate_mapping.get(self.rotation_gate)
-        if rotation_func is None:
-            raise ValueError("Invalid rotation_gate value. Choose 'rx', 'ry', 'rz', or 'h_rz'.")
-            
-        for layer in range(self.num_layers):
-            # Apply single-qubit rotations
-            for i in range(self.num_qubits):
-                rotation_func(features[i], i % self.num_qubits)
-
-            # Apply entangling gates
-            for i in range(self.num_qubits - 1):
-                QC.cx(i, i+1)
-
+        QC = ZZFeatureMap(self.num_qubits, reps=self.num_layers, data_map_func=self_product)
         return QC
+
+
 

@@ -11,6 +11,10 @@ from .circuit_library.multi_control_encoding_circuit import MultiControlEncoding
 from .circuit_library.chebyshev_rx import ChebyshevRx
 from .circuit_library.param_z_feature_map import ParamZFeatureMap
 from .circuit_library.qiskit_encoding_circuit import QiskitEncodingCircuit
+from .circuit_library.hardware_efficient_circuit import HardwareEfficientEmbeddingCircuit
+from .circuit_library.expressibility_circuits import ExpressibilityEmbeddingCircuit
+#from .circuit_library.IQP_like_circuit import IQPLikeCircuit
+
 
 __all__ = [
     "PrunedEncodingCircuit",
@@ -28,4 +32,5 @@ __all__ = [
     "ChebyshevRx",
     "ParamZFeatureMap",
     "QiskitEncodingCircuit",
-]
+    "HardwareEfficientEmbeddingCircuit",
+    "ExpressibilityEmbeddingCircuit",]
