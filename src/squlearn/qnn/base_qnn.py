@@ -151,6 +151,15 @@ class BaseQNN(BaseEstimator, ABC):
 
         self._is_fitted = self.pretrained
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["_pbar"]
+        return state
+
+    def __setstate__(self, state) -> None:
+        state.update({"_pbar": None})
+        return super().__setstate__(state)
+
     @property
     def param(self) -> np.ndarray:
         """Parameters of the PQC."""
@@ -160,6 +169,16 @@ class BaseQNN(BaseEstimator, ABC):
     def param_op(self) -> np.ndarray:
         """Parameters of the cost operator."""
         return self._param_op
+
+    @property
+    def num_parameters(self) -> int:
+        """Number of parameters of the PQC."""
+        return self._qnn.num_parameters
+
+    @property
+    def num_parameters_observable(self) -> int:
+        """Number of parameters of the observable."""
+        return self._qnn.num_parameters_observable
 
     def fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None) -> None:
         """Fit a new model to data.
