@@ -1,4 +1,5 @@
 """QNNRegressor Implemenation"""
+
 from typing import Callable, Union
 from warnings import warn
 import sys
@@ -80,7 +81,7 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         reg = QNNRegressor(
             ChebyshevRx(4, 1, 2),
             IsingHamiltonian(4, I="S", Z="S", ZZ="S"),
-            Executor("statevector_simulator"),
+            Executor(),
             SquaredLoss(),
             SLSQP(),
             np.random.rand(16),
@@ -151,7 +152,7 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         if self.shot_control is not None:
             self.shot_control.reset_shots()
 
-        return self._qnn.evaluate_f(X, self._param, self._param_op)
+        return self._qnn.evaluate(X, self._param, self._param_op, "f")["f"]
 
     def partial_fit(self, X: np.ndarray, 
                     y: np.ndarray, 
@@ -242,4 +243,10 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         """Internal fit function."""
         if self.callback == "pbar":
             self._pbar = tqdm(total=self._total_iterations, desc="fit", file=sys.stdout)
+<<<<<<< HEAD
         self.partial_fit(X, y, weights, ODE_functional, ODE_functional_gradient)
+=======
+        self.partial_fit(X, y, weights)
+        if self.callback == "pbar":
+            self._pbar.close()
+>>>>>>> 0ae9430c3dcc019704e069dbf2bf9d5b718260b8

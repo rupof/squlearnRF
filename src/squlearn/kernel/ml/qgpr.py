@@ -1,4 +1,5 @@
 """Quantum Gaussian Process Regressor"""
+
 import warnings
 
 from ..matrix.kernel_matrix_base import KernelMatrixBase
@@ -57,7 +58,7 @@ class QGPR(BaseEstimator, RegressorMixin):
        MIT Press 2006 <https://www.gaussianprocess.org/gpml/chapters/RW.pdf>`_
 
        [2]: F.Rapp, M.Roth "Quantum Gaussian Process Regression for Bayesian Optimization",
-       `<https://arxiv.org/abs/2304.12923>`_.
+       `<https://link.springer.com/article/10.1007/s42484-023-00138-9>`_.
 
 
     **Example**
@@ -69,7 +70,7 @@ class QGPR(BaseEstimator, RegressorMixin):
         from squlearn.kernel.matrix import FidelityKernel
         from squlearn.kernel.ml import QGPR
         enc_circ = HubregtsenEncodingCircuit(num_qubits=num_qubits, num_features=num_features, num_layers=2)
-        q_kernel = FidelityKernel(encoding_circuit=enc_circ, executor=Executor("statevector_simulator"))
+        q_kernel = FidelityKernel(encoding_circuit=enc_circ, executor=Executor())
         q_kernel.assign_parameters(np.random.rand(enc_circ.num_parameters))
         qgpr_ansatz = QGPR(quantum_kernel=q_kernel)
         qgpr_ansatz.fit(sample_train,label_train)

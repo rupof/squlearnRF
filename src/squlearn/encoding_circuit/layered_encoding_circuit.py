@@ -87,6 +87,9 @@ class _operation:
             ent_strategy: the entangling strategy: if None, than the program knows, that this is not an entangling layer
             map: A default map, that is used, if the operation has exactly 2 variable groups and no given map (by user)
             default_map: A boolean, that checks, if the user initializes his own map
+
+        Methods:
+        --------
         """
         self.num_qubits = num_qubits
         self.variablegroup_tuple = variablegroup_tuple
@@ -749,6 +752,9 @@ class LayeredPQC:
             variable_groups_string_tuple [tuple]: Tuple of the hash values for each variable group, with that, you can search the position of each variable_group,
                 e.g. variable_groups = (x_var, x_var2,...) with type(x_var) = variable_group and variable_string_list = (hash(x_var),hash(x_var2),...)
             layer_counter [int]: counts the number of different layers of the layer class used
+
+        Methods:
+        --------
         """
         self._num_qubits = num_qubits
         self.operation_list = []
@@ -1885,19 +1891,19 @@ class ConvertedLayeredEncodingCircuit(EncodingCircuitBase):
         """
         split = []
         feature_name = []
-        ioff = 0
+        index_offset = 0
         for vg in self._feature_variable_group:
-            ioff += self._layered_pqc.get_number_of_variables(vg)
-            split.append(ioff)
+            index_offset += self._layered_pqc.get_number_of_variables(vg)
+            split.append(index_offset)
             feature_name.append(vg.variable_name)
         split_features = np.split(features, split)
 
         split = []
         parameter_name = []
-        ioff = 0
+        index_offset = 0
         for vg in self._parameters_variable_group:
-            ioff += self._layered_pqc.get_number_of_variables(vg)
-            split.append(ioff)
+            index_offset += self._layered_pqc.get_number_of_variables(vg)
+            split.append(index_offset)
             parameter_name.append(vg.variable_name)
         split_parameters = np.split(parameters, split)
 

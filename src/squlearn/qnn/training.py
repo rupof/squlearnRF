@@ -4,7 +4,7 @@ from sklearn.utils import gen_batches
 from typing import Union
 
 from .loss import LossBase
-from .qnn import QNN
+from .lowlevel_qnn_base import LowLevelQNNBase
 from ..optimizers.optimizer_base import OptimizerBase, SGDMixin, IterativeMixin
 from ..util import Executor
 
@@ -209,7 +209,7 @@ class ShotsFromRSTD(ShotControlBase):
 
 
 def train(
-    qnn: QNN,
+    qnn: LowLevelQNNBase,
     input_values: Union[list, np.ndarray],
     ground_truth: Union[list, np.ndarray],
     param_ini: Union[list, np.ndarray],
@@ -226,7 +226,7 @@ def train(
     Function for training a given QNN.
 
     Args:
-        QNN (QNN): QNN instance that is trained
+        QNN (LowLevelQNNBase): QNN instance that is trained
         input_values (Union[list,np.ndarray]): List of input values, i.e. training data
         ground_truth (Union[list,np.ndarray]): List of ground truth values,
                                                e.g. labels of the training data
@@ -300,6 +300,7 @@ def train(
             if isinstance(shot_control, ShotsFromRSTD):
                 shot_control.set_shots_for_loss()
 
+<<<<<<< HEAD
         if ODE_functional is not None:
             loss_values, loss_initial_values = ODE_functional(qnn.evaluate(("f", "dfdx", "dfdxdx"), input_values, param_, param_op_))
             c = 0
@@ -312,6 +313,9 @@ def train(
         else:
             loss_values = qnn.evaluate(loss.loss_args_tuple, input_values, param_, param_op_) 
             loss_initial_values = 0
+=======
+        loss_values = qnn.evaluate(input_values, param_, param_op_, *loss.loss_args_tuple)
+>>>>>>> 0ae9430c3dcc019704e069dbf2bf9d5b718260b8
 
         loss_value = loss.value(
                 loss_values,
@@ -347,13 +351,13 @@ def train(
             if isinstance(shot_control, ShotsFromRSTD):
                 if loss.loss_variance_available:
                     loss_variance = loss.variance(
-                        qnn.evaluate(loss.variance_args_tuple, input_values, param_, param_op_),
+                        qnn.evaluate(input_values, param_, param_op_, *loss.variance_args_tuple),
                         ground_truth=ground_truth,
                         weights=weights_values,
                         iteration=iteration,
                     )
                     loss_values = loss.value(
-                        qnn.evaluate(loss.loss_args_tuple, input_values, param_, param_op_),
+                        qnn.evaluate(input_values, param_, param_op_, *loss.loss_args_tuple),
                         ground_truth=ground_truth,
                         weights=weights_values,
                         iteration=iteration,
@@ -401,7 +405,7 @@ def train(
 
 
 def train_mini_batch(
-    qnn: QNN,
+    qnn: LowLevelQNNBase,
     input_values: Union[list, np.ndarray],
     ground_truth: Union[list, np.ndarray],
     param_ini: Union[list, np.ndarray],
@@ -420,7 +424,7 @@ def train_mini_batch(
     """Minimize a loss function using mini-batch gradient descent.
 
     Args:
-        QNN (QNN): QNN instance that is trained
+        QNN (LowLevelQNNBase): QNN instance that is trained
         input_values (Union[list,np.ndarray]): List of input values, i.e. training data
         ground_truth (Union[list,np.ndarray]): List of ground truth values,
                                                e.g. labels of the training data
@@ -500,7 +504,7 @@ def train_mini_batch(
                     shot_control.set_shots_for_loss()
 
             loss_values = qnn.evaluate(
-                loss.loss_args_tuple, input_values[idcs[batch_slice]], param, param_op
+                input_values[idcs[batch_slice]], param, param_op, *loss.loss_args_tuple
             )
         
             batch_loss = loss.value(
@@ -518,10 +522,10 @@ def train_mini_batch(
                     if loss.loss_variance_available:
                         batch_loss_variance = loss.variance(
                             qnn.evaluate(
-                                loss.variance_args_tuple,
                                 input_values[idcs[batch_slice]],
                                 param,
                                 param_op,
+                                *loss.variance_args_tuple,
                             ),
                             ground_truth=ground_truth[idcs[batch_slice]],
                             weights=weights_values[idcs[batch_slice]],
@@ -535,7 +539,7 @@ def train_mini_batch(
                         raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")
 
             diff_values = qnn.evaluate(
-                loss.gradient_args_tuple, input_values[idcs[batch_slice]], param, param_op
+                input_values[idcs[batch_slice]], param, param_op, *loss.gradient_args_tuple
             )
 
             grad = loss.gradient(

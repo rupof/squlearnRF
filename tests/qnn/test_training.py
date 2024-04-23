@@ -1,4 +1,5 @@
 """Tests for training methods."""
+
 import numpy as np
 
 import pytest
@@ -8,11 +9,11 @@ from squlearn.observables import SummedPaulis, SinglePauli
 from squlearn.encoding_circuit import ChebyshevPQC, HighDimEncodingCircuit
 from squlearn.optimizers import SLSQP, Adam
 from squlearn.qnn.loss import SquaredLoss
-from squlearn.qnn.qnn import QNN
+from squlearn.qnn.lowlevel_qnn import LowLevelQNN
 from squlearn.qnn import QNNRegressor, QNNClassifier
 from squlearn.qnn.training import train_mini_batch, ShotsFromRSTD
 
-executor = Executor("statevector_simulator")
+executor = Executor()
 
 examples = [np.arange(0.1, 0.9, 0.01), np.log(np.arange(0.1, 0.9, 0.01))]
 
@@ -22,7 +23,7 @@ class TestSolvemini_batch:
 
     pqc = ChebyshevPQC(4, 1, 3, False)
     cost_op = SummedPaulis(4)
-    qnn = QNN(pqc, cost_op, executor)
+    qnn = LowLevelQNN(pqc, cost_op, executor)
     ex_1 = [np.arange(0.1, 0.9, 0.01), np.log(np.arange(0.1, 0.9, 0.01))]
 
     def test_wrong_optimizer(self):
@@ -51,7 +52,7 @@ class TestShotsFromRSTD:
 
         pqc = ChebyshevPQC(2, 1, 3, False)
         ob = SummedPaulis(2)
-        executor = Executor("qasm_simulator", primitive_seed=0)
+        executor = Executor("qasm_simulator", seed=0)
         qnn = QNNRegressor(
             pqc,
             ob,
@@ -74,7 +75,7 @@ class TestShotsFromRSTD:
 
         pqc = ChebyshevPQC(2, 1, 3, False)
         ob = [SummedPaulis(2), SummedPaulis(2)]
-        executor = Executor("qasm_simulator", primitive_seed=0)
+        executor = Executor("qasm_simulator", seed=0)
         qnn = QNNRegressor(
             pqc,
             ob,
@@ -167,7 +168,7 @@ class TestZeroParam:
             "QNNClassifier": np.array([1, 0, 0, 0, 0]),
         }
 
-        pqc = HighDimEncodingCircuit(2, 1)
+        pqc = HighDimEncodingCircuit(2, 1, num_layers=1)
         ob = SummedPaulis(2)
 
         qnn, x_train, y_train = self._build_qnn_setup(pqc, ob, test_case)
@@ -184,7 +185,7 @@ class TestZeroParam:
             "QNNClassifier": np.array([0, 0, 0, 0, 0]),
         }
 
-        pqc = HighDimEncodingCircuit(2, 1)
+        pqc = HighDimEncodingCircuit(2, 1, num_layers=1)
         ob = SinglePauli(2, 0, "Z")
 
         qnn, x_train, y_train = self._build_qnn_setup(pqc, ob, test_case)

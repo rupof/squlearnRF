@@ -1,4 +1,5 @@
 """Tests for QSVR"""
+
 import pytest
 import numpy as np
 from unittest.mock import MagicMock
@@ -29,7 +30,7 @@ class TestQSVR:
     def qsvr_fidelity(self) -> QSVR:
         """QSVR module with FidelityKernel."""
         np.random.seed(42)
-        executor = Executor("statevector_simulator")
+        executor = Executor()
         encoding_circuit = MultiControlEncodingCircuit(num_qubits=3, num_features=2, num_layers=2)
         kernel = FidelityKernel(
             encoding_circuit,
@@ -43,7 +44,7 @@ class TestQSVR:
     def qsvr_pqk(self) -> QSVR:
         """QSVR module wit ProjectedQuantumKernel."""
         np.random.seed(42)
-        executor = Executor("statevector_simulator")
+        executor = Executor()
         encoding_circuit = MultiControlEncodingCircuit(num_qubits=3, num_features=2, num_layers=2)
         kernel = ProjectedQuantumKernel(
             encoding_circuit, executor=executor, regularization="thresholding"
