@@ -411,7 +411,7 @@ class SquaredLoss(LossBase):
             weights = kwargs["weights"]
         else:
             weights = np.ones_like(ground_truth)
-        return np.sum(np.multiply(np.square(value_dict["f"] - ground_truth), weights))
+        return np.sum(np.multiply(np.square(value_dict["f"] - ground_truth), weights)) # shape: (n_samples, n_outputs)
 
     def variance(self, value_dict: dict, **kwargs) -> float:
         r"""Calculates the approximated variance of the squared loss.
@@ -471,16 +471,15 @@ class SquaredLoss(LossBase):
             weights = np.ones_like(ground_truth)
         multiple_output = "multiple_output" in kwargs and kwargs["multiple_output"]
 
-        weighted_diff = np.multiply((value_dict["f"] - ground_truth), weights)
-
+        weighted_diff = np.multiply((value_dict["f"] - ground_truth), weights) # shape: (n_samples, n_outputs)
+    
         if value_dict["dfdp"].shape[0] == 0:
             d_p = np.array([])
         else:
             if multiple_output:
-                d_p = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdp"])
+                d_p = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdp"]) #shape: (n_samples, n_outputs, n_params) -> (n_params)
             else:
-                d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdp"])
-
+                d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdp"]) #shape: (n_samples, n_params) -> (n_params)
         # Extra code for the cost operator derivatives
         if not self._opt_param_op:
             return d_p
@@ -489,10 +488,172 @@ class SquaredLoss(LossBase):
             d_op = np.array([])
         else:
             if multiple_output:
-                d_op = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdop"])
+                d_op = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdop"]) #shape: (n_samples, n_outputs, n_params_op) -> (n_params_op)
             else:
-                d_op = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdop"])
+                d_op = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdop"]) #shape: (n_samples, n_params_op) -> (n_params_op)
         return d_p, d_op
+
+
+class ODELoss(LossBase):
+    """Squared loss for regression."""
+
+    #ODELoss requires the ODE_functional and ODE_functional_gradient and initial values
+    #ODELoss and ODE_functional_gradient are functions
+    def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None):
+        super().__init__()
+        self._ODE_functional = ODE_functional #F[x, f, f_, f__] returns the value of the ODE functional shape: (n_samples, n_outputs)
+        self._ODE_functional_gradient = ODE_functional_gradient #(dF/df, dF/df_, dF/df__) returns the value of the ODE functional shape: (n_samples, n_outputs)
+        self.initial_vec = None
+
+    @property
+    def loss_args_tuple(self) -> tuple:
+        """Returns evaluation tuple for the squared loss calculation."""
+        return ("f",)
+
+    @property
+    def gradient_args_tuple(self) -> tuple:
+        """Returns evaluation tuple for the squared loss gradient calculation."""
+        if self._opt_param_op:
+            return ("f", "dfdp", "dfdop")
+        return ("f", "dfdp")
+
+    def value(self, value_dict: dict, **kwargs) -> float:
+        r"""Calculates the squared loss.
+
+        This function calculates the squared loss between the values in value_dict and ground_truth
+        as
+
+        .. math::
+            \sum_i w_i \left|f\left(x_i\right)-f_ref\left(x_i\right)\right|^2
+
+        Args:
+            value_dict (dict): Contains calculated values of the model
+            ground_truth (np.ndarray): The true values :math:`f_ref\left(x_i\right)`
+            weights (np.ndarray): Weight for each data point, if None all data points count the same
+
+        Returns:
+            Loss value
+        """
+        if "ground_truth" not in kwargs:
+            raise AttributeError("SquaredLoss requires ground_truth.")
+        ground_truth = kwargs["ground_truth"]
+        if "weights" in kwargs and kwargs["weights"] is not None:
+            weights = kwargs["weights"]
+        else:
+            weights = np.ones_like(ground_truth)
+
+        eta = 1
+        functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2
+        initial_value_loss_f = eta*np.sum(np.square(value_dict["f"][0] - self.initial_vec[0])) #L_theta +=  (f(x_i) - f_0)^2 #Pinned boundary to be included
+        try:
+            initial_value_loss_df = eta*np.sum(np.square(value_dict["dfdx"][0] - self.initial_vec[1])) #L_theta +=  (f'(x_i) - f_0')^2
+        except:
+            initial_value_loss_df = 0
+        print("Functional loss: ", functional_loss)
+        return functional_loss + initial_value_loss_f + initial_value_loss_df
+    
+
+  
+
+    def gradient(
+        self, value_dict: dict, **kwargs
+    ) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
+        r"""Returns the gradient of the squared loss.
+
+        This function calculates the gradient of the squared loss between the values in value_dict
+        and ground_truth as
+
+        .. math::
+           \sum_j \sum_i w_i \left(f\left(x_i\right)-f_ref\left(x_i\right)\right) \frac{\partial f(x_i)}{\partial p_j}
+
+        Args:
+            value_dict (dict): Contains calculated values of the model
+            ground_truth (np.ndarray): The true values :math:`f_ref\left(x_i\right)`
+            weights (np.ndarray): Weight for each data point, if None all data points count the same
+            multiple_output (bool): True if the QNN has multiple outputs
+
+        Returns:
+            Gradient values
+        """
+
+        if "ground_truth" not in kwargs:
+            raise AttributeError("SquaredLoss requires ground_truth.")
+
+        ground_truth = kwargs["ground_truth"]
+        if "weights" in kwargs and kwargs["weights"] is not None:
+            weights = kwargs["weights"]
+        else:
+            weights = np.ones_like(ground_truth)
+        multiple_output = "multiple_output" in kwargs and kwargs["multiple_output"]
+
+        weighted_diff = np.multiply((self._ODE_functional(value_dict) - ground_truth), weights) # shape: (n_samples, n_outputs)
+    
+        if value_dict["dfdp"].shape[0] == 0:
+            d_p = np.array([])
+        else:
+            if multiple_output:
+                d_p = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdp"]) #shape: (n_samples, n_outputs, n_params) -> (n_params)
+            else:
+                d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdp"]) #shape: (n_samples, n_params) -> (n_params)| this d_p comes from the MSE
+                print("d_p shape: ", d_p.shape)
+                dD_dp = np.array([value_dict["f"], value_dict["dfdx"], value_dict["dfdxdx"]]) # shape: (3, n_samples, n_params)
+                print("dD_dp shape: ", dD_dp.shape)
+                d_ODE_functional_dD = self._ODE_functional_gradient(value_dict) # shape: (3, n_samples)
+                print("d_ODE_functional_dD shape: ", d_ODE_functional_dD.shape)
+
+                d_p *= np.einsum("ijk,ijk->jk", d_ODE_functional_dD, dD_dp) #shape: (3, n_samples, n_params) -> (n_params)
+                #d_p *= np.einsum("ijk,ijk->jk", grad_envelope_list, grad_p)
+        # Extra code for the cost operator derivatives
+        if not self._opt_param_op:
+            return d_p
+
+        if value_dict["dfdop"].shape[0] == 0:
+            d_op = np.array([])
+        else:
+            if multiple_output:
+                d_op = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdop"]) #shape: (n_samples, n_outputs, n_params_op) -> (n_params_op)
+            else:
+                d_op = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdop"]) #shape: (n_samples, n_params_op) -> (n_params_op)
+        return d_p, d_op
+
+
+
+def grad_L_functional(loss_values):
+    """ArithmeticError
+    n = x_span.shape[0] number of points
+    m = x_span.shape[1] number of dimensions (typically m=1)
+
+    F[x, x_, x__] = envelope(x, x_, x__)
+
+    grad_envelope = (envelope(x, x_, x__)dx, envelope(x, x_, x__)dx_, envelope(x, x_, x__)dx__)
+
+    """
+    x_span = loss_values["x"] # shape (n, m)   
+    f = loss_values["f"] # shape (n,)
+    dfdx = loss_values["dfdx"][:,0] # shape (n, m) 
+    dfdxdx = loss_values["dfdxdx"][:,0,:] # shape (n, 1, m)
+
+    dfdp = loss_values["dfdp"] # shape (n, p)
+    n_param = dfdp.shape[1]
+    dfdpdx = loss_values["dfdpdx"][:,0,:] # shape (n, 1, p)
+    dfdpdxdx = loss_values["dfdpdxdx"][:,0,0,:] # shape (n, 1, 1, p)
+    
+    #problem dependent gradient!!
+    grad_envelope_list = np.zeros((3, x_span.shape[0], n_param)) # shape (3, n, p) 
+    grad_envelope_list[0,:,:] = 1
+    grad_envelope_list[1,:,:] = 0
+    grad_envelope_list[2,:,:] = 1
+    ###########3
+
+
+    grad_p = np.array([dfdp, dfdpdx, dfdpdxdx])  # shape (n, p), (n, p), (n, p) -> (3, n, p)
+    
+    total_grad_einsum = np.einsum("ijk,ijk->jk", grad_envelope_list, grad_p)  + dfdp
+    #same as below
+    #for n_i in range(x_span.shape[0]):
+    #    for p_i in range(n_param):
+    #        total_grad_[n_i, p_i] = np.sum(grad_envelope_list[:,n_i,p_i] * grad_p[:,n_i,p_i])
+    #print(np.array_equal(total_grad_, total_grad_einsum))
 
 
 class VarianceLoss(LossBase):

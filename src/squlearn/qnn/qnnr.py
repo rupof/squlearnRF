@@ -153,7 +153,12 @@ class QNNRegressor(BaseQNN, RegressorMixin):
 
         return self._qnn.evaluate_f(X, self._param, self._param_op)
 
-    def partial_fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None) -> None:
+    def partial_fit(self, X: np.ndarray, 
+                    y: np.ndarray, 
+                    weights: np.ndarray = None, 
+                    ODE_functional: Union[bool] = None ,
+                    ODE_functional_gradient: Union[bool] = None,
+) -> None:
         """Fit a model to data.
 
         This method will update the models parameters to fit the provided data.
@@ -164,7 +169,6 @@ class QNNRegressor(BaseQNN, RegressorMixin):
             y: Labels
             weights: Weights for each data point
         """
-
         loss = self.loss
         if self.variance is not None:
             loss = loss + VarianceLoss(alpha=self.variance)
@@ -219,21 +223,23 @@ class QNNRegressor(BaseQNN, RegressorMixin):
                 )
             else:
                 self._param = train(
-                    self._qnn,
-                    X,
-                    y,
-                    self._param,
-                    self._param_op,
-                    loss,
-                    self.optimizer,
-                    self.shot_control,
-                    weights,
-                    False,
+                    qnn = self._qnn,
+                    input_values = X,
+                    ground_truth = y,
+                    param_ini= self._param,
+                    param_op_ini=self._param_op,
+                    loss=loss,
+                    optimizer=self.optimizer,
+                    shot_control=self.shot_control,
+                    weights=weights,
+                    opt_param_op=False,
+                    ODE_functional=ODE_functional,
+                    ODE_functional_gradient=ODE_functional_gradient,
                 )
         self._is_fitted = True
 
-    def _fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None) -> None:
+    def _fit(self, X: np.ndarray, y: np.ndarray, weights: np.ndarray = None, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None) -> None:
         """Internal fit function."""
         if self.callback == "pbar":
             self._pbar = tqdm(total=self._total_iterations, desc="fit", file=sys.stdout)
-        self.partial_fit(X, y, weights)
+        self.partial_fit(X, y, weights, ODE_functional, ODE_functional_gradient)

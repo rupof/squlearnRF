@@ -129,11 +129,15 @@ class Expec:
             elif val == "laplace":
                 return cls("laplace", "O", "laplace")
             elif val == "laplace_dp":
-                return cls("laplace_dp", "O", "laplace_dp")
+                return cls("laplace_dp", "O", "laplace_dp")  
             elif val == "laplace_dop":
                 return cls("laplace", "dop", "laplace_dop")
             elif val == "dfdp":
                 return cls("dp", "O", "dfdp")
+            elif val == "dfdxdp":
+                return cls("dxdp", "O", "dfdxdp")
+            elif val == "dfdxdxdp":
+                return cls("dxdxdp", "O", "dfdxdxdp")
             elif val == "dfdpdp":
                 return cls("dpdp", "O", "dfdpdp")
             elif val == "dfdopdp":
@@ -146,6 +150,8 @@ class Expec:
                 return cls("I", "dopdop", "dfdop")
             elif val == "dfdpdx":
                 return cls("dpdx", "O", "dfdpdx")
+            elif val == "dfdpdxdx":
+                return cls("dpdxdx", "O", "dfdpdxdx")
             elif val == "dfdopdx":
                 return cls("dx", "dop", "dfdopdx")
             elif val == "dfdopdxdx":

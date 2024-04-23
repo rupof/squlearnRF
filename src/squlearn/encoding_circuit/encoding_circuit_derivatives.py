@@ -149,8 +149,12 @@ class EncodingCircuitDerivatives:
                 optree = self._differentiation_from_tuple((self._p, self._p)).copy()
             elif derivative == "dpdx":
                 optree = self._differentiation_from_tuple((self._p, self._x)).copy()
+            elif derivative == "dpdxdx":
+                optree = self._differentiation_from_tuple((self._p, self._p, self._x)).copy()
             elif derivative == "dxdp":
                 optree = self._differentiation_from_tuple((self._x, self._p)).copy()
+            elif derivative == "dxdxdp":
+                optree = self._differentiation_from_tuple((self._x, self._x, self._p)).copy()
             else:
                 raise ValueError("Unknown string command:", derivative)
         elif isinstance(derivative, tuple):

@@ -219,6 +219,8 @@ def train(
     shot_control: ShotControlBase = None,
     weights: Union[list, np.ndarray] = None,
     opt_param_op: bool = True,
+    ODE_functional: Union[bool] = None ,
+    ODE_functional_gradient: Union[bool] = None,
 ):
     """
     Function for training a given QNN.
@@ -279,6 +281,7 @@ def train(
         nonlocal iteration
         nonlocal optimizer
         nonlocal param_op
+        c = 1 # c is the constant for the ODE functional
         if isinstance(optimizer, IterativeMixin):
             iteration = optimizer.iteration
         else:
@@ -297,17 +300,32 @@ def train(
             if isinstance(shot_control, ShotsFromRSTD):
                 shot_control.set_shots_for_loss()
 
-        loss_values = qnn.evaluate(loss.loss_args_tuple, input_values, param_, param_op_)
+        if ODE_functional is not None:
+            loss_values, loss_initial_values = ODE_functional(qnn.evaluate(("f", "dfdx", "dfdxdx"), input_values, param_, param_op_))
+            c = 0
+            loss_initial_values = loss.value(
+                loss_initial_values,
+                ground_truth=ground_truth*c,
+                weights=weights_values,
+                iteration=iteration,
+            )
+        else:
+            loss_values = qnn.evaluate(loss.loss_args_tuple, input_values, param_, param_op_) 
+            loss_initial_values = 0
 
         loss_value = loss.value(
-            loss_values,
-            ground_truth=ground_truth,
-            weights=weights_values,
-            iteration=iteration,
-        )
-        return loss_value
+                loss_values,
+                ground_truth=ground_truth*c,
+                weights=weights_values,
+                iteration=iteration,
+            )        
+        
+        total_loss = loss_value + loss_initial_values
+        print(total_loss)
+        return total_loss
 
     def _grad(theta):
+        c = 1 # c is the constant for the ODE functional
         nonlocal iteration
         nonlocal optimizer
         nonlocal param_op
@@ -344,17 +362,21 @@ def train(
                 else:
                     raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")
 
-        grad_values = qnn.evaluate(loss.gradient_args_tuple, input_values, param_, param_op_)
+        if ODE_functional is not None:
+            grad_values = ODE_functional_gradient(qnn.evaluate(("f", "dfdx", "dfdxdx", "dfdp", "dfdpdx", "dfdpdxdx"), input_values, param_, param_op_))
+            c = 0
+        else:
+            grad_values = qnn.evaluate(loss.gradient_args_tuple, input_values, param_, param_op_) #"f", "dfdp", "dfdop"
         grad = np.concatenate(
-            loss.gradient(
-                grad_values,
-                ground_truth=ground_truth,
-                weights=weights_values,
-                iteration=iteration,
-                multiple_output=qnn.multiple_output,
-                opt_param_op=opt_param_op,
-            ),
-            axis=None,
+        loss.gradient(
+            grad_values,
+            ground_truth=ground_truth*c,
+            weights=weights_values,
+            iteration=iteration,
+            multiple_output=qnn.multiple_output,
+            opt_param_op=opt_param_op,
+        ),
+        axis=None,
         )
         return grad
 
@@ -392,6 +414,8 @@ def train_mini_batch(
     epochs: int = 10,
     batch_size: int = None,
     shuffle=False,
+    ODE_functional: Union[bool] = None ,
+    ODE_functional_gradient: Union[bool] = None,
 ):
     """Minimize a loss function using mini-batch gradient descent.
 
@@ -478,7 +502,7 @@ def train_mini_batch(
             loss_values = qnn.evaluate(
                 loss.loss_args_tuple, input_values[idcs[batch_slice]], param, param_op
             )
-
+        
             batch_loss = loss.value(
                 loss_values,
                 ground_truth=ground_truth[idcs[batch_slice]],
