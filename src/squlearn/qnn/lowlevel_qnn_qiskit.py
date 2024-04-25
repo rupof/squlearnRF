@@ -120,6 +120,10 @@ class Expec:
                 return cls("dx", "O", "dfdx")
             elif val == "dfdxdx":
                 return cls("dxdx", "O", "dfdxdx")
+            elif val == "dfdpdx":
+                return cls("dpdx", "O", "dfdpdx")
+            elif val == "dfdpdxdx":
+                return cls("dpdxdx", "O", "dfdpdxdx")
             elif val == "laplace":
                 return cls("laplace", "O", "laplace")
             elif val == "laplace_dp":

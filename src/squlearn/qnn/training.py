@@ -257,7 +257,6 @@ def train(
             f"Shape {weights_values.shape} of weight values doesn't match shape"
             f" {ground_truth.shape} of reference values"
         )
-
     # Preprocessing of the input values in case of lists
     if not isinstance(param_ini, np.ndarray):
         param = np.array([param_ini])
@@ -267,7 +266,8 @@ def train(
         param_op = np.array([param_op_ini])
     else:
         param_op = param_op_ini
-
+    
+    print("param value", param)
     # Merge initialization values for minimize
     val_ini = param
     if opt_param_op:
