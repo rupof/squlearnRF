@@ -500,12 +500,13 @@ class ODELoss(LossBase):
 
     #ODELoss requires the ODE_functional and ODE_functional_gradient and initial values
     #ODELoss and ODE_functional_gradient are functions
-    def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None, eta = np.float64(1.0)):
+    def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None, eta = np.float64(1.0), boundary_handling = "pinned"):
         super().__init__()
         self._ODE_functional = ODE_functional #F[x, f, f_, f__] returns the value of the ODE functional shape: (n_samples, n_outputs)
         self._ODE_functional_gradient = ODE_functional_gradient #(dF/df, dF/df_, dF/df__) returns the value of the ODE functional shape: (n_samples, n_outputs)
         self.initial_vec = initial_vec
         self.eta = eta
+        self.boundary_handling = boundary_handling
 
     @property
     def loss_args_tuple(self) -> tuple:
@@ -529,6 +530,25 @@ class ODELoss(LossBase):
         elif len(self.initial_vec) == 2:
             return ("f", "dfdx", "dfdxdx", "dfdp", "dfdxdp", "dfdxdxdp")
     
+    def _Ansatz_to_Floating_Boundary_Ansatz(self, value_dict: dict, **kwargs) -> dict:
+        value_dict_floating = value_dict
+        value_dict_floating["f"] = self.initial_vec[0]  - value_dict_floating["f"][0]  +  value_dict_floating["f"]
+        try: 
+            value_dict_floating["dfdp"] =  - value_dict_floating["dfdp"][0] + value_dict_floating["dfdp"]
+            value_dict_floating["dfdxdp"] =  - value_dict_floating["dfdxdp"][0] + value_dict_floating["dfdxdp"]
+        except:
+            print("First time")
+        try:
+            value_dict_floating["dfdx"] = self.initial_vec[1] - value_dict_floating["dfdx"][0][0] + value_dict_floating["dfdx"]
+            value_dict_floating["dfdxdx"] = value_dict_floating["dfdxdx"]
+        except:
+            value_dict_floating["dfdx"] =  value_dict_floating["dfdx"]
+            value_dict_floating["dfdxdx"] = np.zeros_like(value_dict_floating["f"])
+        return value_dict_floating
+
+
+
+
 
     def value(self, value_dict: dict, **kwargs) -> float:
         r"""Calculates the squared loss.
@@ -555,12 +575,19 @@ class ODELoss(LossBase):
         else:
             weights = np.ones_like(ground_truth)
 
-        functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
-        initial_value_loss_f = self.eta*np.sum(np.square(value_dict["f"][0] - self.initial_vec[0])) #L_theta +=  (f(x_i) - f_0)^2 #Pinned boundary to be included
-        try:
-            initial_value_loss_df = self.eta*np.sum(np.square(value_dict["dfdx"][0] - self.initial_vec[1])) #L_theta +=  (f'(x_i) - f_0')^2
-        except:
-            initial_value_loss_df = 0
+        functional_loss, initial_value_loss_f, initial_value_loss_df = 0, 0, 0
+        if self.boundary_handling == "pinned":
+            functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
+            initial_value_loss_f = self.eta*(np.square(value_dict["f"][0] - self.initial_vec[0]))     #L_theta +=  (f(x_i) - f_0)^2 #Pinned boundary to be included
+            try:
+                initial_value_loss_df = self.eta*(np.square(value_dict["dfdx"][0] - self.initial_vec[1])) #L_theta +=  (f'(x_i) - f_0')^2
+            except:
+                pass
+        elif self.boundary_handling == "floating":
+            value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict)
+            functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
+
+
         print("Functional loss: ", functional_loss)
         print("Initial value loss f: ", initial_value_loss_f)
         print("Total: ", functional_loss + initial_value_loss_f + initial_value_loss_df)
@@ -620,6 +647,16 @@ class ODELoss(LossBase):
                 #print("dfdp shape: ", value_dict["dfdp"].shape) #shape: (n_samples, n_params)
                 #print("dfdxdp shape: ", value_dict["dfdxdp"].shape) #shape: (n_samples, 1, n_params)
                 #print("dfdxdxdp shape: ", value_dict["dfdxdxdp"].shape) #shape: (n_samples, 1, 1, n_params)
+                d_p = np.zeros(value_dict["dfdp"].shape[1])
+                if self.boundary_handling == "pinned":
+                    d_p += 2.0 * self.eta*(value_dict["f"][0] - self.initial_vec[0])*value_dict["dfdp"][0, :] #shape: (n_params)
+                    try:
+                        d_p += 2.0*self.eta*np.sum(value_dict["dfdx"][0] - self.initial_vec[1])*value_dict["dfdxdp"][0, 0, :] #shape: (n_params)
+                    except:
+                        pass
+                elif self.boundary_handling == "floating":
+                    print("Floating boundary")
+                    value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict)
 
                 d_ODE_functional_dD = self._ODE_functional_gradient(value_dict) # shape: (3, n_samples, n_params)
 
@@ -628,12 +665,8 @@ class ODELoss(LossBase):
                 else:
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] +  d_ODE_functional_dD[2]*value_dict["dfdxdxdp"][:,0,0,:]
 
-                d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, dfdp_like) #shape: (n_samples, n_params) -> (n_params)
-                d_p += 2.0 * self.eta*(value_dict["f"][0] - self.initial_vec[0])*value_dict["dfdp"][0, :] #shape: (n_params)
-                try:
-                    d_p += 2.0*self.eta*np.sum(value_dict["dfdx"][0] - self.initial_vec[1])*value_dict["dfdxdp"][0, 0, :] #shape: (n_params)
-                except:
-                    pass
+                d_p += 2.0 * np.einsum("j,jk->k", weighted_diff, dfdp_like) #shape: (n_samples, n_params) -> (n_params)
+
         if not self._opt_param_op:
             return d_p
 
