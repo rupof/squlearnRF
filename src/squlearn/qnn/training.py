@@ -359,37 +359,38 @@ def train(
             axis=None,
         )
         if print_numerical_grad:
-            #Numerical Difference Grad to check
-            grad_numerical = np.zeros(len(param_))
-            for i in range(len(param_)):
-                epsilon = 1e-10
-                param_numerical_plus = np.copy(param_)
-                param_numerical_plus[i] += epsilon
-                loss_values_plus = qnn.evaluate(input_values, param_numerical_plus, param_op_, *loss.loss_args_tuple)
-                loss_values_plus = loss.value(
-                    loss_values_plus,
-                    ground_truth=ground_truth,
-                    weights=weights_values,
-                    iteration=iteration,
-                )
+            if iteration % 80 == 0:
+                #Numerical Difference Grad to check
+                grad_numerical = np.zeros(len(param_))
+                for i in range(len(param_)):
+                    epsilon = 1e-10
+                    param_numerical_plus = np.copy(param_)
+                    param_numerical_plus[i] += epsilon
+                    loss_values_plus = qnn.evaluate(input_values, param_numerical_plus, param_op_, *loss.loss_args_tuple)
+                    loss_values_plus = loss.value(
+                        loss_values_plus,
+                        ground_truth=ground_truth,
+                        weights=weights_values,
+                        iteration=iteration,
+                    )
 
 
-                param_numerical_minus = np.copy(param_)
-                param_numerical_minus[i] -= epsilon
-                loss_values_minus = qnn.evaluate(input_values, param_numerical_minus, param_op_, *loss.loss_args_tuple)
-                loss_values_minus = loss.value(
-                    loss_values_minus,
-                    ground_truth=ground_truth,
-                    weights=weights_values,
-                    iteration=iteration,
-                )
-                grad_numerical[i] = (loss_values_plus - loss_values_minus)/(2*epsilon)
+                
+                    param_numerical_minus = np.copy(param_)
+                    param_numerical_minus[i] -= epsilon
+                    loss_values_minus = qnn.evaluate(input_values, param_numerical_minus, param_op_, *loss.loss_args_tuple)
+                    loss_values_minus = loss.value(
+                        loss_values_minus,
+                        ground_truth=ground_truth,
+                        weights=weights_values,
+                        iteration=iteration,
+                    )
+                    grad_numerical[i] = (loss_values_plus - loss_values_minus)/(2*epsilon)
 
 
-            print("NUMERICAL GRAD", grad_numerical)
-            print("GRAD and sum", grad, np.sum(grad))
-
-        print("DIFF", np.linalg.norm(grad - grad_numerical))
+                print("NUMERICAL GRAD", grad_numerical)
+                print("GRAD and sum", grad, np.sum(grad))
+                print("DIFF", np.linalg.norm(grad - grad_numerical))
         return grad
 
     if len(val_ini) == 0:
