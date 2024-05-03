@@ -267,7 +267,6 @@ def train(
     else:
         param_op = param_op_ini
     
-    print("param value", param)
     # Merge initialization values for minimize
     val_ini = param
     if opt_param_op:
@@ -296,7 +295,8 @@ def train(
         if shot_control is not None:
             if isinstance(shot_control, ShotsFromRSTD):
                 shot_control.set_shots_for_loss()
-
+        print("PARAM", param_)
+        print("INPUT", input_values)
         loss_values = qnn.evaluate(input_values, param_, param_op_, *loss.loss_args_tuple)
 
         loss_value = loss.value(
@@ -375,6 +375,8 @@ def train(
         return param, param_op
 
     param = result
+    print("PARAM", param)
+
     return param
 
 

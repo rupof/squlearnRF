@@ -460,8 +460,7 @@ class SquaredLoss(LossBase):
 
         Returns:
             Gradient values
-        """
-
+        """        
         if "ground_truth" not in kwargs:
             raise AttributeError("SquaredLoss requires ground_truth.")
 
@@ -547,8 +546,8 @@ class ODELoss(LossBase):
         return value_dict_floating
 
 
-
-
+                #value_dict["dfdp"] shape: (n_samples, n_params)
+                #value_dict["dfdpdx"] shape: (n_samples, 1, n_params)
 
     def value(self, value_dict: dict, **kwargs) -> float:
         r"""Calculates the squared loss.
@@ -577,7 +576,12 @@ class ODELoss(LossBase):
 
         functional_loss, initial_value_loss_f, initial_value_loss_df = 0, 0, 0
         if self.boundary_handling == "pinned":
+            print("Weights", weights)
+            print("Loss tensor", np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights))
             functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
+            print("Initial vec", self.initial_vec[0])
+            print("Initial value", value_dict["f"][0])
+
             initial_value_loss_f = self.eta*(np.square(value_dict["f"][0] - self.initial_vec[0]))     #L_theta +=  (f(x_i) - f_0)^2 #Pinned boundary to be included
             try:
                 initial_value_loss_df = self.eta*(np.square(value_dict["dfdx"][0] - self.initial_vec[1])) #L_theta +=  (f'(x_i) - f_0')^2
@@ -627,8 +631,11 @@ class ODELoss(LossBase):
             weights = np.ones_like(ground_truth)
         multiple_output = "multiple_output" in kwargs and kwargs["multiple_output"]
 
-        weighted_diff = np.multiply((self._ODE_functional(value_dict) - ground_truth), weights) # shape: (n_samples, n_outputs)
-    
+        weighted_diff = np.multiply((self._ODE_functional(value_dict) - ground_truth), weights) # shape: (n_samples, n_outputs) 
+        #(F(x_0, f_0, f_0', f_0'')
+        #(F(x_1, f_1, f_1', f_1''), ...
+
+        #print("Params", value_dict["p"])
         if value_dict["dfdp"].shape[0] == 0:
             d_p = np.array([])
         else:
@@ -666,7 +673,7 @@ class ODELoss(LossBase):
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] +  d_ODE_functional_dD[2]*value_dict["dfdxdxdp"][:,0,0,:]
 
                 d_p += 2.0 * np.einsum("j,jk->k", weighted_diff, dfdp_like) #shape: (n_samples, n_params) -> (n_params)
-
+        print("Gradient sum: !!!", d_p)
         if not self._opt_param_op:
             return d_p
 
@@ -689,7 +696,6 @@ class ODELoss(LossBase):
                     d_op += 2.0*self.eta*np.sum(value_dict["dfdx"][0] - self.initial_vec[1])*value_dict["dfdxdop"][0, 0, :] #shape: (n_params)
                 except:
                     pass
-        print("Gradient sum: ", np.sum(d_p))
 
         return d_p, d_op
 
