@@ -529,19 +529,38 @@ class ODELoss(LossBase):
         elif len(self.initial_vec) == 2:
             return ("f", "dfdx", "dfdxdx", "dfdp", "dfdxdp", "dfdxdxdp")
     
-    def _Ansatz_to_Floating_Boundary_Ansatz(self, value_dict: dict, **kwargs) -> dict:
+    def _Ansatz_to_Floating_Boundary_Ansatz(self, value_dict: dict, gradient_calculation = True, **kwargs) -> dict:
+        """
+        Converts the ansatz to a floating boundary ansatz by setting the initial values to the initial values of the ODE
+
+        If 1rst order ODE: f(x_0) = f_0 and f'(x_0) free to optimize and f''(x) = 0 to save computational resources.
+        If 2nd order ODE: f(x_0) = f_0 and f'(x_0) = f_0' and f''(x).
+
+        Args:
+            value_dict (dict): Contains calculated values of the model
+            gradient_calculation (bool): True if the gradient is calculated
+        
+        Returns:
+            value_dict_floating (dict): Contains the values of the model with the initial values set to the initial values of the ODE
+
+        
+        """
         value_dict_floating = value_dict
-        value_dict_floating["f"] = self.initial_vec[0]  - value_dict_floating["f"][0]  +  value_dict_floating["f"]
-        try: 
-            value_dict_floating["dfdp"] =  - value_dict_floating["dfdp"][0] + value_dict_floating["dfdp"]
-            value_dict_floating["dfdxdp"] =  - value_dict_floating["dfdxdp"][0] + value_dict_floating["dfdxdp"]
-        except:
-            print("First time")
+        value_dict_floating["f"][0] = self.initial_vec[0]  #f(x_0) = f_0
+
+        if len(self.initial_vec) == 2:  #if only one initial value is given, we have a 1rst order ODE
+            value_dict_floating["dfdx"][0] = self.initial_vec[1] #f'(x_0) = f_0'
+
+        if gradient_calculation:
+            value_dict_floating["dfdp"][0] =  value_dict_floating["dfdp"][0]*0
+            if len(self.initial_vec) == 2:  #if only one initial value is given, we have a 1rst order ODE
+                value_dict_floating["dfdxdp"][0] = value_dict_floating["dfdxdp"][0]*0   
+            else:
+                value_dict_floating["dfdxdxdp"] = np.zeros((value_dict_floating["dfdxdx"].shape[0], 1, 1, value_dict_floating["dfdp"].shape[1]))
+
         try:
-            value_dict_floating["dfdx"] = self.initial_vec[1] - value_dict_floating["dfdx"][0][0] + value_dict_floating["dfdx"]
             value_dict_floating["dfdxdx"] = value_dict_floating["dfdxdx"]
         except:
-            value_dict_floating["dfdx"] =  value_dict_floating["dfdx"]
             value_dict_floating["dfdxdx"] = np.zeros_like(value_dict_floating["f"])
         return value_dict_floating
 
@@ -576,11 +595,11 @@ class ODELoss(LossBase):
 
         functional_loss, initial_value_loss_f, initial_value_loss_df = 0, 0, 0
         if self.boundary_handling == "pinned":
-            print("Weights", weights)
-            print("Loss tensor", np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights))
+            #print("Weights", weights)
+            #print("Loss tensor", np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights))
             functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
-            print("Initial vec", self.initial_vec[0])
-            print("Initial value", value_dict["f"][0])
+            #print("Initial vec", self.initial_vec[0])
+            #print("Initial value", value_dict["f"][0])
 
             initial_value_loss_f = self.eta*(np.square(value_dict["f"][0] - self.initial_vec[0]))     #L_theta +=  (f(x_i) - f_0)^2 #Pinned boundary to be included
             try:
@@ -588,13 +607,13 @@ class ODELoss(LossBase):
             except:
                 pass
         elif self.boundary_handling == "floating":
-            value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict)
+            value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = False)
             functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
 
 
-        print("Functional loss: ", functional_loss)
-        print("Initial value loss f: ", initial_value_loss_f)
-        print("Total: ", functional_loss + initial_value_loss_f + initial_value_loss_df)
+        #print("Functional loss: ", functional_loss)
+        #print("Initial value loss f: ", initial_value_loss_f)
+        #print("Total: ", functional_loss + initial_value_loss_f + initial_value_loss_df)
         return functional_loss + initial_value_loss_f + initial_value_loss_df
     
 
@@ -663,17 +682,18 @@ class ODELoss(LossBase):
                         pass
                 elif self.boundary_handling == "floating":
                     print("Floating boundary")
-                    value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict)
+                    value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = True)
 
                 d_ODE_functional_dD = self._ODE_functional_gradient(value_dict) # shape: (3, n_samples, n_params)
 
-                if len(self.initial_vec) == 1:  #if only one initial value is given, we have a 1rst order ODE
+                if len(self.initial_vec) == 1 and self.boundary_handling == "pinned":  
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] #shape: (n_samples, n_params)
                 else:
+                    print("using this")
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] +  d_ODE_functional_dD[2]*value_dict["dfdxdxdp"][:,0,0,:]
 
                 d_p += 2.0 * np.einsum("j,jk->k", weighted_diff, dfdp_like) #shape: (n_samples, n_params) -> (n_params)
-        print("Gradient sum: !!!", d_p)
+
         if not self._opt_param_op:
             return d_p
 
