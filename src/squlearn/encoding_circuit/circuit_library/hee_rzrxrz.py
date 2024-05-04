@@ -99,7 +99,7 @@ class HEE_rzrxrz(EncodingCircuitBase):
         """
 
         if self.num_qubits < 2:
-            raise ValueError("MultiControlEncodingCircuit requires at least two qubits.")
+            raise ValueError("HEE_rzrxrz requires at least two qubits.")
 
         nfeature = len(features)
         nparam = len(parameters)
