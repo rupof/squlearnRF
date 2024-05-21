@@ -308,7 +308,36 @@ def train(
         )
         print("current LOSS", loss_value)
         return loss_value
+    
+    def _fun_mse(theta):
+        nonlocal iteration
+        nonlocal optimizer
+        nonlocal param_op
+        if isinstance(optimizer, IterativeMixin):
+            iteration = optimizer.iteration
+        else:
+            iteration = None
 
+        # Splitting theta in the arrays
+        if opt_param_op:
+            param_ = theta[: len(param_ini)]
+            param_op_ = theta[len(param_ini) :]
+        else:
+            param_ = theta
+            param_op_ = param_op
+
+        # Shot controlling
+        if shot_control is not None:
+            if isinstance(shot_control, ShotsFromRSTD):
+                shot_control.set_shots_for_loss()
+        
+        f_value = qnn.evaluate(input_values, param_, param_op_, "f")["f"]
+        true_solution = loss.get_true_solution()
+
+        print(f_value.shape, true_solution.shape)
+
+        return np.mean((f_value - true_solution)**2)
+    
     def _grad(theta):
         nonlocal iteration
         nonlocal optimizer
@@ -387,10 +416,9 @@ def train(
                     )
                     grad_numerical[i] = (loss_values_plus - loss_values_minus)/(2*epsilon)
 
-
-                print("NUMERICAL GRAD", grad_numerical)
-                print("GRAD and sum", grad, np.sum(grad))
-                print("DIFF", np.linalg.norm(grad - grad_numerical))
+                #print("NUMERICAL GRAD", grad_numerical)
+                #print("GRAD and sum", grad, np.sum(grad))
+                #print("DIFF", np.linalg.norm(grad - grad_numerical))
         return grad
 
     if len(val_ini) == 0:
@@ -399,7 +427,15 @@ def train(
         else:
             return np.array([])
 
-    result = optimizer.minimize(_fun, val_ini, _grad, bounds=None)
+    try:
+        true_solution = loss.get_true_solution()
+    except:
+        true_solution = None
+    
+    if true_solution is not None:
+        result = optimizer.minimize(_fun, val_ini, _grad, bounds=None, mse_fun = _fun_mse)
+    else:
+        result = optimizer.minimize(_fun, val_ini, _grad, bounds=None)
 
     if hasattr(result, "x"):
         result = result.x

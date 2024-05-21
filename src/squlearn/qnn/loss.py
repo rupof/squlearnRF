@@ -499,13 +499,14 @@ class ODELoss(LossBase):
 
     #ODELoss requires the ODE_functional and ODE_functional_gradient and initial values
     #ODELoss and ODE_functional_gradient are functions
-    def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None, eta = np.float64(1.0), boundary_handling = "pinned"):
+    def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None, eta = np.float64(1.0), boundary_handling = "pinned", true_solution = None):
         super().__init__()
         self._ODE_functional = ODE_functional #F[x, f, f_, f__] returns the value of the ODE functional shape: (n_samples, n_outputs)
         self._ODE_functional_gradient = ODE_functional_gradient #(dF/df, dF/df_, dF/df__) returns the value of the ODE functional shape: (n_samples, n_outputs)
         self.initial_vec = initial_vec
         self.eta = eta
-        self.boundary_handling = boundary_handling
+        self.boundary_handling = boundary_handling 
+        self.true_solution = true_solution
 
     @property
     def loss_args_tuple(self) -> tuple:
@@ -514,6 +515,9 @@ class ODELoss(LossBase):
             return ("f", "dfdx")
         elif len(self.initial_vec) == 2:
             return ("f", "dfdx", "dfdxdx")
+        
+    def get_true_solution(self) -> np.ndarray:
+        return self.true_solution
 
     @property
     def gradient_args_tuple(self) -> tuple:

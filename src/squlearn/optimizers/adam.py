@@ -46,6 +46,7 @@ class Adam(OptimizerBase, SGDMixin):
         self.maxiter_total = options.get("maxiter_total", self.maxiter)
         self.log_file = options.get("log_file", None)
         self.skip_fun = options.get("skip_fun", False)
+        self.skip_mse_fun = options.get("skip_mse_fun", False)
         self.eps = options.get("eps", 0.01)
 
         self.callback = callback
@@ -60,10 +61,20 @@ class Adam(OptimizerBase, SGDMixin):
 
         if self.log_file is not None:
             f = open(self.log_file, "w")
-            if self.skip_fun is not None:
+            if self.skip_fun is not None and self.skip_mse_fun == True:
                 output = " %9s  %12s  %12s  %12s  %12s  %12s \n" % (
                     "Iteration",
                     "f(x)",
+                    "Gradient",
+                    "Step",
+                    "Eff. LR",
+                    "LR",
+                )
+            elif self.skip_fun is not None and self.skip_mse_fun == False:
+                output = " %9s  %12s  %12s  %12s  %12s  %12s  %12s \n" % (
+                    "Iteration",
+                    "f(x)",
+                    "MSE",
                     "Gradient",
                     "Step",
                     "Eff. LR",
@@ -91,7 +102,7 @@ class Adam(OptimizerBase, SGDMixin):
         self._update_lr()
 
     def minimize(
-        self, fun: callable, x0: np.ndarray, grad: callable = None, bounds=None
+        self, fun: callable, x0: np.ndarray, grad: callable = None, bounds=None, mse_fun: callable = None,
     ) -> OptimizerResult:
         """
         Function to minimize a given function using the ADAM optimizer.
@@ -114,6 +125,9 @@ class Adam(OptimizerBase, SGDMixin):
 
         self.x = x_updated = x0
 
+        if mse_fun is None:
+            mse_fval = None
+
         if grad is None:
             grad = FiniteDiffGradient(fun, eps=self.eps).gradient
 
@@ -121,8 +135,11 @@ class Adam(OptimizerBase, SGDMixin):
             # calculate the function value (TODO: make it skipable)
             if self.skip_fun:
                 fval = None
+                mse_fval = None
             else:
                 fval = fun(self.x)
+                if mse_fun is not None:
+                    mse_fval = mse_fun(self.x)
 
             # Calculate the gradient and average it over the last num_average gradients
             # (1 is default: no averaging)
@@ -135,7 +152,7 @@ class Adam(OptimizerBase, SGDMixin):
                 x_updated = np.clip(x_updated, bounds[:, 0], bounds[:, 1])
 
             if self.log_file is not None:
-                self._log(fval, gradient, np.linalg.norm(self.x - x_updated))
+                self._log(fval, gradient, np.linalg.norm(self.x - x_updated), mse_fval)
 
             if self.callback is not None:
                 self.callback(self.iteration, self.x, gradient, fval)
@@ -199,14 +216,24 @@ class Adam(OptimizerBase, SGDMixin):
                 / (1 - self.beta_1 ** (self.iteration))
             )
 
-    def _log(self, fval, gradient, dx):
+    def _log(self, fval, gradient, dx, mse_fval = None):
         """Function for creating a log entry of the optimization."""
         if self.log_file is not None:
             f = open(self.log_file, "a")
-            if fval is not None:
+            if fval is not None and mse_fval is None:
                 output = " %9d  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f \n" % (
                     self.iteration,
                     fval,
+                    np.linalg.norm(gradient),
+                    dx,
+                    self.lr_eff,
+                    self.lr,
+                )
+            elif fval is not None and mse_fval is not None:
+                output = "%9d  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f \n" % (
+                    self.iteration,
+                    fval,
+                    mse_fval,
                     np.linalg.norm(gradient),
                     dx,
                     self.lr_eff,
