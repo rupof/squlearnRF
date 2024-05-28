@@ -158,6 +158,9 @@ class ChebyshevRx(EncodingCircuitBase):
                 index_offset += 1
             QC = entangle_layer(QC)
 
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC
 
     def get_cheb_indices(self, flatten: bool = True):

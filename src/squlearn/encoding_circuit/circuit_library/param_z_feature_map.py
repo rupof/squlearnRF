@@ -102,5 +102,7 @@ class ParamZFeatureMap(EncodingCircuitBase):
                 else:
                     for j in range(1, self._num_qubits - 1, 2):
                         circuit.cx(j, j + 1)
-
+        if self.inverse_value:
+            self.inverse_value = True
+            circuit = circuit.inverse()
         return circuit

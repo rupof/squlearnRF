@@ -17,6 +17,7 @@ class EncodingCircuitBase:
     def __init__(self, num_qubits: int, num_features: int) -> None:
         self._num_qubits = num_qubits
         self._num_features = num_features
+        self.inverse_value = False
 
     @property
     def num_qubits(self) -> int:
@@ -151,7 +152,19 @@ class EncodingCircuitBase:
                 setattr(self, "_" + key, value)
 
         return None
+    
+    def inverse(self) -> QuantumCircuit:
+        """
+        Returns the inverse of the encoding circuit.
 
+        Return:
+            The inverse of the encoding circuit.
+        """
+        self.inverse_value = True
+        return self
+    
+        
+    
     def __mul__(self, x):
         return self.__add__(x)
 

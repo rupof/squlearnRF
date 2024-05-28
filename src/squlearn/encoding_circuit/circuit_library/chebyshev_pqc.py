@@ -229,6 +229,9 @@ class ChebyshevPQC(EncodingCircuitBase):
             QC.ry(parameters[index_offset % nparam], i)
             index_offset += 1
 
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC
 
     def get_cheb_indices(self, flatten: bool = True):

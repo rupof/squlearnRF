@@ -119,6 +119,8 @@ class HEE_rzrxrz(EncodingCircuitBase):
             for i in range(1, self.num_qubits - 1, 2):
                 QC.cx(i, i + 1)
             
-                
-                
+
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC

@@ -240,6 +240,9 @@ class HighDimEncodingCircuit(EncodingCircuitBase):
             if self.cycling == False and index_offset >= self.num_features:
                 index_offset = 0
 
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC
 
 

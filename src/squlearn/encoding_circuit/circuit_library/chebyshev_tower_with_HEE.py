@@ -198,4 +198,7 @@ class ChebyshevTower_with_HEE(EncodingCircuitBase):
             if layer + 1 < self.num_layers:
                 QC = entangle_layer(QC)
 
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC

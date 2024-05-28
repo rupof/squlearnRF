@@ -39,6 +39,7 @@ class QiskitEncodingCircuit(EncodingCircuitBase):
                     parameters. Can be ``features`` or ``parameters`` or ``auto``.
                     With auto, the mode is automatically determined depending on the
                     parameter name. (default: ``auto``)
+                    
         decompose (bool): If True, the decompose method is called on the inputted circuit object.
                           (default: ``True``)
         feature_label (str): The label of the parameters that are considered as features.
@@ -69,6 +70,7 @@ class QiskitEncodingCircuit(EncodingCircuitBase):
         self._mode = mode
         self._feature_label = feature_label
         self._parameter_label = parameter_label
+        self.inverse_value = False
 
         if self._mode.lower() == "x" or self._mode.lower() == "features":
             self._num_features = len(self._qiskit_circuit.parameters)
@@ -201,4 +203,8 @@ class QiskitEncodingCircuit(EncodingCircuitBase):
         else:
             raise ValueError("The type {} is not supported!".format(self._mode))
 
-        return self._qiskit_circuit.assign_parameters(dictionary, inplace=False)
+        QC = self._qiskit_circuit
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
+        return QC.assign_parameters(dictionary, inplace=False)

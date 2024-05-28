@@ -168,5 +168,7 @@ class HubregtsenEncodingCircuit(EncodingCircuitBase):
                     QC.rz(features[i % nfeatures], i % self.num_qubits)
                 else:
                     QC.rx(features[i % nfeatures], i % self.num_qubits)
-
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC

@@ -146,4 +146,7 @@ class MultiControlEncodingCircuit(EncodingCircuitBase):
             for i in range(self.num_qubits):
                 QC.rz(features[feature_offset % nfeature], i)
                 feature_offset += 1
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC

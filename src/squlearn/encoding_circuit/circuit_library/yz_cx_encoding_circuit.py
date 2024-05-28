@@ -127,4 +127,7 @@ class YZ_CX_EncodingCircuit(EncodingCircuitBase):
             if self.num_qubits >= 2:
                 for i in range(layer % 2, self.num_qubits + self.closed - 1, 2):
                     QC.cx(i, (i + 1) % self.num_qubits)
+        if self.inverse_value:
+            self.inverse_value = True
+            QC = QC.inverse()
         return QC
