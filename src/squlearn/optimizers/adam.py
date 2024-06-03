@@ -150,9 +150,9 @@ class Adam(OptimizerBase, SGDMixin):
 
             if bounds != None:
                 x_updated = np.clip(x_updated, bounds[:, 0], bounds[:, 1])
-
+            
             if self.log_file is not None:
-                self._log(fval, gradient, np.linalg.norm(self.x - x_updated), mse_fval)
+                self._log(fval, gradient=gradient, dx=np.linalg.norm(self.x - x_updated), mse_fval=mse_fval)
 
             if self.callback is not None:
                 self.callback(self.iteration, self.x, gradient, fval)
@@ -220,6 +220,7 @@ class Adam(OptimizerBase, SGDMixin):
         """Function for creating a log entry of the optimization."""
         if self.log_file is not None:
             f = open(self.log_file, "a")
+            
             if fval is not None and mse_fval is None:
                 output = " %9d  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f \n" % (
                     self.iteration,
@@ -230,6 +231,12 @@ class Adam(OptimizerBase, SGDMixin):
                     self.lr,
                 )
             elif fval is not None and mse_fval is not None:
+                
+                if isinstance(self.lr, np.ndarray) or isinstance(self.lr, list):
+                    lr_i = self.lr[self.iteration-1]
+                else:
+                    lr_i = self.lr
+                
                 output = "%9d  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f \n" % (
                     self.iteration,
                     fval,
@@ -237,7 +244,7 @@ class Adam(OptimizerBase, SGDMixin):
                     np.linalg.norm(gradient),
                     dx,
                     self.lr_eff,
-                    self.lr,
+                    lr_i,
                 )
             else:
                 output = " %9d  %12.5f  %12.5f  %12.5f  %12.5f \n" % (

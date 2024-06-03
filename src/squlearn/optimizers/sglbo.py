@@ -109,6 +109,8 @@ class SGLBO(OptimizerBase, SGDMixin):
 
             x_updated = self.step(x=self.x, grad=gradient)
 
+            if mse_fun is not None:
+                mse_fval = mse_fun(self.x)
             # check termination
             if np.linalg.norm(self.x - x_updated) < self.tol:
                 break
