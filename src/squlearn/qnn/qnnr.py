@@ -237,6 +237,8 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         """Internal fit function."""
         if self.callback == "pbar":
             self._pbar = tqdm(total=self._total_iterations, desc="fit", file=sys.stdout)
+        elif self.callback == "ode":
+            self._ode_callback = True
         self.partial_fit(X, y, weights)
         if self.callback == "pbar":
             self._pbar.close()

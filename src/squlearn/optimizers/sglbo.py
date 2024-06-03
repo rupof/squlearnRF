@@ -54,15 +54,13 @@ class SGLBO(OptimizerBase, SGDMixin):
 
         if self.log_file is not None:
             f = open(self.log_file, "w")
-            header = (
-                f"maxiter_total: {self.maxiter_total}\n"
-                f"bo_n_calls: {self.bo_n_calls}\n"
-                f"bo_bounds: {self.bo_bounds}\n"
-                f"bo_aqc_func: {self.bo_aqc_func}\n"
-                f"bo_n_initial_points: {self.bo_n_initial_points}\n"
-            )
-            output = " %9s  %13s  %13s  %13s \n" % ("Iteration", "f(x)", "Gradient", "Step")
-            f.write(header)
+            output = " %9s  %12s  %12s  %12s  %12s  \n" % (
+                    "Iteration",
+                    "f(x)",
+                    "MSE",
+                    "Gradient",
+                    "Step",
+                )
             f.write(output)
             f.close()
 
@@ -72,6 +70,7 @@ class SGLBO(OptimizerBase, SGDMixin):
         x0: np.ndarray,
         grad: callable = None,
         bounds=None,
+        mse_fun: callable = None,
     ) -> OptimizerResult:
         """
         Function to minimize a given function using the SGLBO optimizer.
@@ -96,6 +95,9 @@ class SGLBO(OptimizerBase, SGDMixin):
 
         self.x = x0
 
+        if mse_fun is None:
+            mse_fval = None
+
         if grad is None:
             grad = FiniteDiffGradient(fun, eps=self.eps).gradient
 
@@ -112,7 +114,7 @@ class SGLBO(OptimizerBase, SGDMixin):
                 break
 
             if self.log_file is not None:
-                self._log(fval, gradient, np.linalg.norm(self.x - x_updated))
+                self._log(fval, gradient, np.linalg.norm(self.x - x_updated), mse_fval)
 
             self.x = x_updated
 
@@ -186,7 +188,7 @@ class SGLBO(OptimizerBase, SGDMixin):
 
         return x_val
 
-    def _log(self, fval, gradient, dx):
+    def _log(self, fval, gradient, dx, mse_fval=None):
         """Function for creating a log entry of the optimization."""
         if self.log_file is not None:
             f = open(self.log_file, "a")
@@ -194,6 +196,14 @@ class SGLBO(OptimizerBase, SGDMixin):
                 output = " %9d  %13.7f  %13.7f  %13.7f  \n" % (
                     self.iteration,
                     fval,
+                    np.linalg.norm(gradient),
+                    dx,
+                )
+            elif fval is not None and mse_fval is not None:
+                output = "%9d  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f  %12.5f \n" % (
+                    self.iteration,
+                    fval,
+                    mse_fval,
                     np.linalg.norm(gradient),
                     dx,
                 )
