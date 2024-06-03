@@ -7,10 +7,11 @@ name = "squlearn"
 readme = "README.md"
 authors = [
     {name = "David Kreplin", email = "david.kreplin@ipa.fraunhofer.de"},
-    {name = "Frederic Rapp", email = "frederic.rapp@ipa.fraunhofer.de"},
-    {name = "Marco Roth", email = "marco.roth@ipa.fraunhofer.de"},
-    {name = "Jan Schnabel", email = "jan.schnabel@ipa.fraunhofer.de"},
     {name = "Moritz Willmann", email = "moritz.willmann@ipa.fraunhofer.de"},
+    {name = "Jan Schnabel", email = "jan.schnabel@ipa.fraunhofer.de"},
+    {name = "Frederic Rapp", email = "frederic.rapp@ipa.fraunhofer.de"},
+    {name = "Manuel Hagelüken", email = "manuel.hagelueken@ipa.fraunhofer.de"},
+    {name = "Marco Roth", email = "marco.roth@ipa.fraunhofer.de"},
 ]
 maintainers = [
     {name = "David Kreplin", email = "david.kreplin@ipa.fraunhofer.de"},
@@ -34,6 +35,7 @@ dependencies = [
     "pennylane>=0.34.0",
     "scipy>=1.5",
     "scikit-learn>=1.0",
+    "bayesian-optimization>=1.4.3",
     "tqdm>=4.0",
 ]
 requires-python = ">=3.9"
@@ -52,6 +54,7 @@ dev = [
     "sphinx",
     "sphinxcontrib-spelling",
     "sphinx-rtd-theme",
+    "sphinx-sitemap",
     "jupyter-sphinx",
 ]
 examples = [
