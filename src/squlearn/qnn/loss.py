@@ -569,7 +569,7 @@ class ODELoss(LossBase):
         return value_dict_floating
 
 
-                #value_dict["dfdp"] shape: (n_samples, n_params)
+                #value_dict["dfdp"] shape: (n_samples, n_params) f
                 #value_dict["dfdpdx"] shape: (n_samples, 1, n_params)
 
     def value(self, value_dict: dict, **kwargs) -> float:
