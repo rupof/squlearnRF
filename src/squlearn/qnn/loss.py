@@ -554,6 +554,11 @@ class ODELoss(LossBase):
 
         if len(self.initial_vec) == 2:  #if only one initial value is given, we have a 1rst order ODE
             value_dict_floating["dfdx"][0] = self.initial_vec[1] #f'(x_0) = f_0'
+            value_dict_floating["dfdxdx"] = value_dict_floating["dfdxdx"]
+        else:
+            value_dict_floating["dfdxdx"] = np.zeros_like(value_dict_floating["f"])
+
+
 
         if gradient_calculation:
             value_dict_floating["dfdp"][0] =  value_dict_floating["dfdp"][0]*0
@@ -562,10 +567,6 @@ class ODELoss(LossBase):
             else:
                 value_dict_floating["dfdxdxdp"] = np.zeros((value_dict_floating["dfdxdx"].shape[0], 1, 1, value_dict_floating["dfdp"].shape[1]))
 
-        try:
-            value_dict_floating["dfdxdx"] = value_dict_floating["dfdxdx"]
-        except:
-            value_dict_floating["dfdxdx"] = np.zeros_like(value_dict_floating["f"])
         return value_dict_floating
 
 
@@ -612,7 +613,9 @@ class ODELoss(LossBase):
                 pass
         elif self.boundary_handling == "floating":
             value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = False)
+            print("Computed value dict")
             functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
+            print("Computed functional loss")
 
 
         #print("Functional loss: ", functional_loss)
@@ -655,6 +658,7 @@ class ODELoss(LossBase):
         multiple_output = "multiple_output" in kwargs and kwargs["multiple_output"]
 
         weighted_diff = np.multiply((self._ODE_functional(value_dict) - ground_truth), weights) # shape: (n_samples, n_outputs) 
+        print("Computed Weighted diff grad")
         #(F(x_0, f_0, f_0', f_0'')
         #(F(x_1, f_1, f_1', f_1''), ...
 
@@ -685,10 +689,13 @@ class ODELoss(LossBase):
                     except:
                         pass
                 elif self.boundary_handling == "floating":
-                    print("Floating boundary")
                     value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = True)
+                    print("Floating boundary gradient computed")
+
 
                 d_ODE_functional_dD = self._ODE_functional_gradient(value_dict) # shape: (3, n_samples, n_params)
+                print("d_ODE functional D computed")
+
 
                 if len(self.initial_vec) == 1 and self.boundary_handling == "pinned":  
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] #shape: (n_samples, n_params)
