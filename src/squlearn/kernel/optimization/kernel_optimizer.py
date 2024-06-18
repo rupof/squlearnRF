@@ -83,7 +83,32 @@ class KernelOptimizer(KernelOptimizerBase):
         self._opt_result = opt_result
 
         return self._opt_result
+    
+    def run_classical_optimization(self, X: np.ndarray, y: np.ndarray = None, initial_parameters_classical: Optional[Sequence[float]] = None):
+        """Run the optimization and return the result.
 
+        Args:
+            X (np.ndarray): The input data.
+            y (np.ndarray): The labels.
+
+        Returns:
+            OptimizeResult: The optimization result.
+        """
+        num_params = self._quantum_kernel.num_parameters
+        if num_params >= 0:
+            print("Parameterized Quantum Kernel for ODE are not supported yet. Parameters will be randomly initialized.")
+            self._initial_parameters = np.random.rand(num_params)
+        if initial_parameters_classical is None:
+            initial_parameters_classical = np.random.rand(X.shape[0]+1)
+
+        # Perform kernel optimization
+        loss_function = partial(self._loss.compute, data=X, labels=y, gate_parameter_values=self._initial_parameters)
+        opt_result = self._optimizer.minimize(fun=loss_function, x0=initial_parameters_classical)
+        self._optimal_value = opt_result.fun
+        self._optimal_point = opt_result.x
+        self._opt_result = opt_result
+
+        return self._optimal_value
 
 # BACKUP FOR DOCUMENTATION
 # Attributes:

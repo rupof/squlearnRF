@@ -3,6 +3,7 @@
 from typing import Union, List
 import numpy as np
 from abc import abstractmethod
+from itertools import combinations
 
 from sklearn.gaussian_process.kernels import (
     RBF,
@@ -476,6 +477,40 @@ class ProjectedQuantumKernel(KernelMatrixBase):
         ):
             kernel_matrix = self._regularize_matrix(kernel_matrix)
         return kernel_matrix
+    
+    def evaluate_derivatives(self, x: np.ndarray, y: np.ndarray = None, evaluation_string: str = "dfdx") -> np.ndarray:
+        if self._parameters is None and self.num_parameters == 0:
+            self._parameters = []
+        if self._parameters is None:
+            raise ValueError("Parameters have not been set yet!")
+        param = self._parameters[: self._qnn.num_parameters]
+        param_op = self._parameters[self._qnn.num_parameters :]
+
+        if self.num_features == 1:
+            if evaluation_string == "dfdx":
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+            if evaluation_string == "dfdxdx":
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
+                dOdxdx = self._qnn.evaluate(x, param, param_op, "dfdxdx")["dfdxdx"]
+
+                first_term = np.einsum("njl,nl,nl->nj", self._outer_kernel.dfdxdx(self._qnn, self._parameters, x, y), dOdx[:,:,0], dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                second_term = np.einsum('njl,nl->nj', self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdxdx[:,:,0,0])
+                index_combinations_of_O = list(combinations(range(dOdx.shape[1]), 2))
+                for k, m in index_combinations_of_O:
+                    mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dfdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0])
+                kernel_matrix = first_term + second_term + mixed_term
+        else:
+            print("WARNING: Multivariable derivatives are not benchmarked yet")
+            if evaluation_string == "dfdx":
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
+                kernel_matrix = np.einsum("njlm,nlm->njm", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,:]) #shape (n, num_qubits*len(measurement), num_features)
+            if evaluation_string == "dfdxdx":
+                raise ValueError("Multivariable derivatives are not benchmarked yet")
+        return kernel_matrix
+
+       
+
 
     def get_params(self, deep: bool = True) -> dict:
         """
@@ -717,6 +752,80 @@ class GaussianOuterKernel(OuterKernelBase):
             y_result = None
 
         return RBF(length_scale=1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result)
+    
+    def dfdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+        """Evaluates the QNN and returns the Gaussian projected kernel
+
+        Args:
+            qnn (QNN): QNN to be evaluated
+            parameters (np.ndarray): parameters of the QNN
+            x (np.ndarray): input data
+            y (np.ndarray): second optional input data
+
+        Returns:
+            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+        """
+
+        param = parameters[: qnn.num_parameters]
+        param_op = parameters[qnn.num_parameters :]
+        x_result = qnn.evaluate(x, param, param_op, "f")["f"]
+        if y is not None:
+            y_result = qnn.evaluate(y, param, param_op, "f")["f"] #Must be benchmarked
+        else:
+            y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
+
+        return -2 * self.gamma * np.einsum('ijl, ij -> ijl', (x_result[:,None,:]-y_result),  # difference of elements (i, l) and (j, l) [i, j, l]
+                                 RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result)) 
+    
+    def dfdxdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+        """Evaluates the QNN and returns the Gaussian projected kernel
+
+        Args:
+            qnn (QNN): QNN to be evaluated
+            parameters (np.ndarray): parameters of the QNN
+            x (np.ndarray): input data
+            y (np.ndarray): second optional input data
+
+        Returns:
+            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+        """
+
+        param = parameters[: qnn.num_parameters]
+        param_op = parameters[qnn.num_parameters :]
+        x_result = qnn.evaluate(x, param, param_op, "f")["f"]
+        if y is not None:
+            y_result = qnn.evaluate(y, param, param_op, "f")["f"] #Must be benchmarked
+        else:
+            y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
+
+        return (2.0 * self.gamma) * np.einsum('ijl, ij -> ijl', 
+                                              (2.0 * self.gamma*(x_result[:,None,:]-y_result)**2-1),  # difference of elements (i, l) and (j, l) [i, j, l]
+                                 RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result))  # RBF kernel [i, j]) 
+
+    def dfdxdy(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+        """Evaluates the QNN and returns the Gaussian projected kernel
+
+        Args:
+            qnn (QNN): QNN to be evaluated
+            parameters (np.ndarray): parameters of the QNN
+            x (np.ndarray): input data
+            y (np.ndarray): second optional input data
+
+        Returns:
+            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+        """
+
+        param = parameters[: qnn.num_parameters]
+        param_op = parameters[qnn.num_parameters :]
+        x_result = qnn.evaluate(x, param, param_op, "f")["f"]
+        if y is not None:
+            y_result = qnn.evaluate(y, param, param_op, "f")["f"] #Must be benchmarked
+        else:
+            y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
+            
+        return 4.0*self.gamma**2.0*np.einsum('ijl,ij, ijp->ijlp', x_result[:, None, :]-y_result, 
+                                             RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result), 
+                                             x_result[:, None, :]-y_result)
 
     def get_params(self, deep: bool = True) -> dict:
         """
