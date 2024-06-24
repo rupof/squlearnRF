@@ -95,9 +95,6 @@ class KernelOptimizer(KernelOptimizerBase):
             OptimizeResult: The optimization result.
         """
         num_params = self._quantum_kernel.num_parameters
-        if num_params >= 0:
-            print("Parameterized Quantum Kernel for ODE are not supported yet. Parameters will be randomly initialized.")
-            self._initial_parameters = np.random.rand(num_params)
         if initial_parameters_classical is None:
             initial_parameters_classical = np.random.rand(X.shape[0]+1)
 

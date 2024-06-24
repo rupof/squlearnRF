@@ -93,9 +93,9 @@ class ODE_loss(KernelLossBase):
     def K_derivatives(self, X_train, y_initial):
         if self._cached_matrices is None:
                 Kmatrix = self._quantum_kernel.evaluate(X_train)
-                dKdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dfdx")
+                dKdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dKdx")
                 if len(y_initial) > 1:
-                    dKdxdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dfdxdx")
+                    dKdxdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dKdxdx")
                 else:
                     dKdxdx = np.zeros_like(dKdx[:,:])
                 self._cached_matrices = (Kmatrix, dKdx, dKdxdx)

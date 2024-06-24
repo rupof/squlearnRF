@@ -57,7 +57,7 @@ class QKODE(BaseEstimator, RegressorMixin):
         if update_params:
             self.set_params(**{key: kwargs[key] for key in update_params})
 
-    def fit(self, X: np.ndarray, y_initial: np.ndarray, initial_parameters_classical: None, **kwargs):
+    def fit(self, X: np.ndarray, y_initial: np.ndarray, initial_parameters_classical: np.ndarray = None, **kwargs):
         """
             Find the $alpha$ parameters of the model represented by the quantum kernel.
 
@@ -86,7 +86,7 @@ class QKODE(BaseEstimator, RegressorMixin):
             self.ode_loss = ODE_loss(quantum_kernel=self._quantum_kernel, L_functional=self.L_functional, **kwargs)
             self.kernel_optimizer = KernelOptimizer(loss=self.ode_loss, optimizer=self.optimizer)
             self.kernel_optimizer.run_classical_optimization(X=self.X_train, y=y_initial, initial_parameters_classical=initial_parameters_classical)
-        if isinstance(self._quantum_kernel, str):
+        elif isinstance(self._quantum_kernel, str):
             raise ValueError(
                 "Precomputed kernel matrices are not supported yet."
             )

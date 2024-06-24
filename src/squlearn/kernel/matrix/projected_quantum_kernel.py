@@ -478,7 +478,7 @@ class ProjectedQuantumKernel(KernelMatrixBase):
             kernel_matrix = self._regularize_matrix(kernel_matrix)
         return kernel_matrix
     
-    def evaluate_derivatives(self, x: np.ndarray, y: np.ndarray = None, evaluation_string: str = "dfdx") -> np.ndarray:
+    def evaluate_derivatives(self, x: np.ndarray, y: np.ndarray = None, evaluation_string: str = "dKdx") -> np.ndarray:
         if self._parameters is None and self.num_parameters == 0:
             self._parameters = []
         if self._parameters is None:
@@ -487,10 +487,14 @@ class ProjectedQuantumKernel(KernelMatrixBase):
         param_op = self._parameters[self._qnn.num_parameters :]
 
         if self.num_features == 1:
-            if evaluation_string == "dfdx":
+            if evaluation_string == "dKdx":
                 dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
                 kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
-            if evaluation_string == "dfdxdx":
+            elif evaluation_string == "dKdy":
+                dOdy = self._qnn.evaluate(y, param, param_op, "dfdx")["dfdx"]
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdy[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+
+            elif evaluation_string == "dKdxdx":
                 dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
                 dOdxdx = self._qnn.evaluate(x, param, param_op, "dfdxdx")["dfdxdx"]
 
@@ -500,13 +504,14 @@ class ProjectedQuantumKernel(KernelMatrixBase):
                 for k, m in index_combinations_of_O:
                     mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dfdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0])
                 kernel_matrix = first_term + second_term + mixed_term
+            else: 
+                raise ValueError(f"{evaluation_string} are not implemented for single-dimensional data yet")
         else:
-            print("WARNING: Multivariable derivatives are not benchmarked yet")
-            if evaluation_string == "dfdx":
+            if evaluation_string == "dKdx":
                 dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njlm,nlm->njm", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,:]) #shape (n, num_qubits*len(measurement), num_features)
-            if evaluation_string == "dfdxdx":
-                raise ValueError("Multivariable derivatives are not benchmarked yet")
+                kernel_matrix = np.einsum("njl,nlm->njm", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,:]) #shape (n, num_qubits*len(measurement), num_features)
+            if evaluation_string == "dKdxdx":
+                raise ValueError("Second order derivatives are not implemented for multi-dimensional data.")
         return kernel_matrix
 
        
@@ -759,8 +764,8 @@ class GaussianOuterKernel(OuterKernelBase):
         Args:
             qnn (QNN): QNN to be evaluated
             parameters (np.ndarray): parameters of the QNN
-            x (np.ndarray): input data
-            y (np.ndarray): second optional input data
+            x (np.ndarray): input data (n, num_features)
+            y (np.ndarray): second optional input data (n, num_features)
 
         Returns:
             np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
@@ -768,14 +773,23 @@ class GaussianOuterKernel(OuterKernelBase):
 
         param = parameters[: qnn.num_parameters]
         param_op = parameters[qnn.num_parameters :]
-        x_result = qnn.evaluate(x, param, param_op, "f")["f"]
+
+        x_result = qnn.evaluate(x, param, param_op, "f")["f"] # (n, num_qubits*len(measurement)*num_features) (i, l)
+        print("Shape of x_result (O)", x_result.shape)
         if y is not None:
-            y_result = qnn.evaluate(y, param, param_op, "f")["f"] #Must be benchmarked
+            y_result = qnn.evaluate(y, param, param_op, "f")["f"] #(n, num_qubits*len(measurement)*num_features) (j, l)
         else:
             y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
 
-        return -2 * self.gamma * np.einsum('ijl, ij -> ijl', (x_result[:,None,:]-y_result),  # difference of elements (i, l) and (j, l) [i, j, l]
-                                 RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result)) 
+        #if x is 1d 
+        if x.ndim >= 0:
+            return -2 * self.gamma * np.einsum('ijl, ij -> ijl', (x_result[:,None,:]-y_result),  # difference of elements (i, l) and (j, l) [i, j, l]
+                                        RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result)) 
+        else:
+            
+            #result = np.zeros((x_result.shape[0], y_result.shape[0], x_result.shape[1]/x.shape[1], x.shape[1]))
+            #result = np.zeros((x_result.shape[0], y_result.shape[0], x_result.shape[1]*x.shape[1]))
+            raise ValueError("Multivariable derivatives are not benchmarked yet")
     
     def dfdxdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
         """Evaluates the QNN and returns the Gaussian projected kernel
@@ -798,9 +812,12 @@ class GaussianOuterKernel(OuterKernelBase):
         else:
             y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
 
-        return (2.0 * self.gamma) * np.einsum('ijl, ij -> ijl', 
-                                              (2.0 * self.gamma*(x_result[:,None,:]-y_result)**2-1),  # difference of elements (i, l) and (j, l) [i, j, l]
-                                 RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result))  # RBF kernel [i, j]) 
+        if x.ndim == 1:
+            return (2.0 * self.gamma) * np.einsum('ijl, ij -> ijl', 
+                                                (2.0 * self.gamma*(x_result[:,None,:]-y_result)**2-1),  # difference of elements (i, l) and (j, l) [i, j, l]
+                                    RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result))  # RBF kernel [i, j]) 
+        else:
+            raise ValueError("Multivariable derivatives are not benchmarked yet")
 
     def dfdxdy(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
         """Evaluates the QNN and returns the Gaussian projected kernel
@@ -823,9 +840,14 @@ class GaussianOuterKernel(OuterKernelBase):
         else:
             y_result = qnn.evaluate(x, param, param_op, "f")["f"] 
             
-        return 4.0*self.gamma**2.0*np.einsum('ijl,ij, ijp->ijlp', x_result[:, None, :]-y_result, 
+        if x.ndim == 1:
+            return 4.0*self.gamma**2.0*np.einsum('ijl,ij, ijp->ijlp', x_result[:, None, :]-y_result, 
                                              RBF(1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result), 
                                              x_result[:, None, :]-y_result)
+        else:
+            raise ValueError("Multivariable derivatives are not benchmarked yet")
+            
+        
 
     def get_params(self, deep: bool = True) -> dict:
         """
