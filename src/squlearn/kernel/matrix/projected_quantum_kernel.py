@@ -489,20 +489,20 @@ class ProjectedQuantumKernel(KernelMatrixBase):
         if self.num_features == 1:
             if evaluation_string == "dKdx":
                 dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
             elif evaluation_string == "dKdy":
                 dOdy = self._qnn.evaluate(y, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdy[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdy[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
 
             elif evaluation_string == "dKdxdx":
                 dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
                 dOdxdx = self._qnn.evaluate(x, param, param_op, "dfdxdx")["dfdxdx"]
 
-                first_term = np.einsum("njl,nl,nl->nj", self._outer_kernel.dfdxdx(self._qnn, self._parameters, x, y), dOdx[:,:,0], dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
-                second_term = np.einsum('njl,nl->nj', self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdxdx[:,:,0,0])
+                first_term = np.einsum("njl,nl,nl->nj", self._outer_kernel.dKdxdx(self._qnn, self._parameters, x, y), dOdx[:,:,0], dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                second_term = np.einsum('njl,nl->nj', self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdxdx[:,:,0,0])
                 index_combinations_of_O = list(combinations(range(dOdx.shape[1]), 2))
                 for k, m in index_combinations_of_O:
-                    mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dfdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0])
+                    mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dKdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0])
                 kernel_matrix = first_term + second_term + mixed_term
             else: 
                 raise ValueError(f"{evaluation_string} are not implemented for single-dimensional data yet")
@@ -731,6 +731,9 @@ class GaussianOuterKernel(OuterKernelBase):
     ) -> np.ndarray:
         """Evaluates the QNN and returns the Gaussian projected kernel
 
+        Only implemented for 1D data
+
+
         Args:
             qnn (QNN): QNN to be evaluated
             parameters (np.ndarray): parameters of the QNN
@@ -758,8 +761,11 @@ class GaussianOuterKernel(OuterKernelBase):
 
         return RBF(length_scale=1.0 / np.sqrt(2.0 * self.gamma))(x_result, y_result)
     
-    def dfdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+    def dKdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
         """Evaluates the QNN and returns the Gaussian projected kernel
+
+        Only implemented for 1D data
+
 
         Args:
             qnn (QNN): QNN to be evaluated
@@ -768,7 +774,7 @@ class GaussianOuterKernel(OuterKernelBase):
             y (np.ndarray): second optional input data (n, num_features)
 
         Returns:
-            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+            np.ndarray: derivative of the Gaussian projected kernel of shape (len(X), len(Y), num_qubits*len(measurement))
         """
 
         param = parameters[: qnn.num_parameters]
@@ -791,8 +797,11 @@ class GaussianOuterKernel(OuterKernelBase):
             #result = np.zeros((x_result.shape[0], y_result.shape[0], x_result.shape[1]*x.shape[1]))
             raise ValueError("Multivariable derivatives are not benchmarked yet")
     
-    def dfdxdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
-        """Evaluates the QNN and returns the Gaussian projected kernel
+    def dKdxdx(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+        """Evaluates the QNN and returns the Gaussian projected kernel.
+
+        Only implemented for 1D data
+
 
         Args:
             qnn (QNN): QNN to be evaluated
@@ -801,7 +810,7 @@ class GaussianOuterKernel(OuterKernelBase):
             y (np.ndarray): second optional input data
 
         Returns:
-            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+            np.ndarray: derivative dKdxdx of the Gaussian projected kernel shape (len(X), len(Y), num_qubits*len(measurement))
         """
 
         param = parameters[: qnn.num_parameters]
@@ -819,8 +828,10 @@ class GaussianOuterKernel(OuterKernelBase):
         else:
             raise ValueError("Multivariable derivatives are not benchmarked yet")
 
-    def dfdxdy(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
-        """Evaluates the QNN and returns the Gaussian projected kernel
+    def dKdxdy(self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
+        """Evaluates the QNN and returns the Gaussian projected kernel. 
+
+        Only implemented for 1D data
 
         Args:
             qnn (QNN): QNN to be evaluated
@@ -829,7 +840,7 @@ class GaussianOuterKernel(OuterKernelBase):
             y (np.ndarray): second optional input data
 
         Returns:
-            np.ndarray: Gaussian projected kernel shape (n, num_qubits*len(measurement), 1)
+            np.ndarray: derivative dKdxdy of the Gaussian projected kernel shape (len(X), len(Y), num_qubits*len(measurement), 1)
         """
 
         param = parameters[: qnn.num_parameters]
