@@ -374,14 +374,13 @@ def train(
                     shot_control.set_shots_for_grad(value=loss_values, variance=loss_variance)
                 else:
                     raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")
-        print("Before gradient calculation")
-        print("PARAM", param_)
-        print("param_op_", param_op_)
-        print("gradient args tuple", loss.gradient_args_tuple)
+        #print("Before gradient calculation")
+        #print("PARAM", param_)
+        #print("param_op_", param_op_)
+        #print("gradient args tuple", loss.gradient_args_tuple)
 
         grad_values = qnn.evaluate(input_values, param_, param_op_, *loss.gradient_args_tuple)
 
-        print("After gradient")
         grad = np.concatenate(
             loss.gradient(
                 grad_values,
@@ -452,7 +451,6 @@ def train(
         return param, param_op
 
     param = result
-    print("PARAM", param)
 
     return param
 

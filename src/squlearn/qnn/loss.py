@@ -495,7 +495,7 @@ class SquaredLoss(LossBase):
 
 
 class ODELoss(LossBase):
-    """Squared loss for regression."""
+    """Squared loss for regression of Ordinary Differential Equations (ODEs)."""
 
     #ODELoss requires the ODE_functional and ODE_functional_gradient and initial values
     #ODELoss and ODE_functional_gradient are functions
@@ -613,9 +613,7 @@ class ODELoss(LossBase):
                 pass
         elif self.boundary_handling == "floating":
             value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = False)
-            print("Computed value dict")
             functional_loss = np.sum(np.multiply(np.square(self._ODE_functional(value_dict) - ground_truth), weights)) #L_theta = sum_i w_i (F(x_i, f_i, f_i', f_i'') - 0)^2, shape (n_samples, n_outputs)
-            print("Computed functional loss")
 
 
         #print("Functional loss: ", functional_loss)
@@ -658,7 +656,6 @@ class ODELoss(LossBase):
         multiple_output = "multiple_output" in kwargs and kwargs["multiple_output"]
 
         weighted_diff = np.multiply((self._ODE_functional(value_dict) - ground_truth), weights) # shape: (n_samples, n_outputs) 
-        print("Computed Weighted diff grad")
         #(F(x_0, f_0, f_0', f_0'')
         #(F(x_1, f_1, f_1', f_1''), ...
 
@@ -690,17 +687,12 @@ class ODELoss(LossBase):
                         pass
                 elif self.boundary_handling == "floating":
                     value_dict = self._Ansatz_to_Floating_Boundary_Ansatz(value_dict, gradient_calculation = True)
-                    print("Floating boundary gradient computed")
-
 
                 d_ODE_functional_dD = self._ODE_functional_gradient(value_dict) # shape: (3, n_samples, n_params)
-                print("d_ODE functional D computed")
-
 
                 if len(self.initial_vec) == 1 and self.boundary_handling == "pinned":  
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] #shape: (n_samples, n_params)
                 else:
-                    print("using this")
                     dfdp_like = d_ODE_functional_dD[0]*value_dict["dfdp"] + d_ODE_functional_dD[1]*value_dict["dfdxdp"][:,0,:] +  d_ODE_functional_dD[2]*value_dict["dfdxdxdp"][:,0,0,:]
 
                 d_p += 2.0 * np.einsum("j,jk->k", weighted_diff, dfdp_like) #shape: (n_samples, n_params) -> (n_params)

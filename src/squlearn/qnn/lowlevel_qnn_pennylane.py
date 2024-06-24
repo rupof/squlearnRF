@@ -672,25 +672,18 @@ def _get_class_from_string(
     # Create the evaluation object from the input variables
     if isinstance(val, str):
         if val == "f":
-            print("Calculating f")
             return DirectEvaluation("f")
         elif val == "dfdx":
-            print("Calculating dfdx")
             return DirectEvaluation("dfdx", 1, argnum=[1], return_grad_x=True)
         elif val == "dfdxdx":
-            print("Calculating dfdxdx")
             return DirectEvaluation("dfdxdx", 2, argnum=[1, 1], return_grad_x=True)
         elif val == "laplace":
-            print("Calculating dfdxdx")
             return PostProcessingEvaluation(val, ("dfdxdx",), _get_eval_laplace("dfdxdx"))
         elif val == "laplace_dp":
-            print("Calculating dfdpdxdx")
             return PostProcessingEvaluation(val, ("dfdpdxdx",), _get_eval_laplace("dfdpdxdx"))
         elif val == "laplace_dop":
-            print("Calculating dfdopdxdx")
             return PostProcessingEvaluation(val, ("dfdopdxdx",), _get_eval_laplace("dfdopdxdx"))
         elif val == "dfdp":
-            print("Calculating dfdp")
             return DirectEvaluation("dfdp", 1, argnum=[0], return_grad_param=True)
         elif val == "dfdpdp":
             return DirectEvaluation("dfdpdp", 2, argnum=[0, 0], return_grad_param=True)
@@ -707,12 +700,10 @@ def _get_class_from_string(
         elif val == "dfdopdop":
             return DirectEvaluation("dfdopdop", 2, argnum=[2, 2], return_grad_param_obs=True)
         elif val == "dfdpdx":
-            print("Calculating dfdpdx")
             return DirectEvaluation(
                 "dfdpdx", 2, argnum=[0, 1], return_grad_param=True, return_grad_x=True
             )
         elif val == "dfdxdp":
-            print("Calculating dfdxdp")
             return DirectEvaluation(
                 "dfdxdp", 2, argnum=[1, 0], return_grad_param=True, return_grad_x=True
             )

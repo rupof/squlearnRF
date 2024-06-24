@@ -85,12 +85,12 @@ class KernelOptimizer(KernelOptimizerBase):
         return self._opt_result
     
     def run_classical_optimization(self, X: np.ndarray, y: np.ndarray = None, initial_parameters_classical: Optional[Sequence[float]] = None):
-        """Run the optimization and return the result.
+        """Run the classical optimization with the given initial_parameters_classical, and return the result.
 
         Args:
             X (np.ndarray): The input data.
             y (np.ndarray): The labels.
-
+            initial_parameters_classical (Optional[Sequence[float]]): The initial parameters for the optimizer.
         Returns:
             OptimizeResult: The optimization result.
         """

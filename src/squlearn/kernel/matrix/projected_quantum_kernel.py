@@ -488,28 +488,28 @@ class ProjectedQuantumKernel(KernelMatrixBase):
 
         if self.num_features == 1:
             if evaluation_string == "dKdx":
-                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"] #shape (n, num_qubits*len(measurement), 1)
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdx[:,:,0]) #shape (len(x), len(y))
             elif evaluation_string == "dKdy":
-                dOdy = self._qnn.evaluate(y, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdy[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
+                dOdy = self._qnn.evaluate(y, param, param_op, "dfdx")["dfdx"] #shape (n, num_qubits*len(measurement), 1)
+                kernel_matrix = np.einsum("njl,nl->nj", self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdy[:,:,0]) #shape (len(x), len(y))
 
             elif evaluation_string == "dKdxdx":
-                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
-                dOdxdx = self._qnn.evaluate(x, param, param_op, "dfdxdx")["dfdxdx"]
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]  #shape (n, num_qubits*len(measurement), 1)
+                dOdxdx = self._qnn.evaluate(x, param, param_op, "dfdxdx")["dfdxdx"] #shape (n, num_qubits*len(measurement), 1, 1)
 
-                first_term = np.einsum("njl,nl,nl->nj", self._outer_kernel.dKdxdx(self._qnn, self._parameters, x, y), dOdx[:,:,0], dOdx[:,:,0]) #shape (n, num_qubits*len(measurement), 1)
-                second_term = np.einsum('njl,nl->nj', self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdxdx[:,:,0,0])
-                index_combinations_of_O = list(combinations(range(dOdx.shape[1]), 2))
+                first_term = np.einsum("njl,nl,nl->nj", self._outer_kernel.dKdxdx(self._qnn, self._parameters, x, y), dOdx[:,:,0], dOdx[:,:,0]) #shape (len(x), len(y))
+                second_term = np.einsum('njl,nl->nj', self._outer_kernel.dKdx(self._qnn, self._parameters, x, y) , dOdxdx[:,:,0,0]) #shape (len(x), len(y))
+                index_combinations_of_O = list(combinations(range(dOdx.shape[1]), 2)) 
                 for k, m in index_combinations_of_O:
-                    mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dKdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0])
+                    mixed_term = 2 * np.einsum('ij,i,i->ij', self._outer_kernel.dKdxdy(self._qnn, self._parameters, x, y)[:,:, k,m], dOdx[:,k,0], dOdx[:,m,0]) #shape (len(x), len(y))
                 kernel_matrix = first_term + second_term + mixed_term
             else: 
                 raise ValueError(f"{evaluation_string} are not implemented for single-dimensional data yet")
         else:
             if evaluation_string == "dKdx":
-                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"]
-                kernel_matrix = np.einsum("njl,nlm->njm", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,:]) #shape (n, num_qubits*len(measurement), num_features)
+                dOdx = self._qnn.evaluate(x, param, param_op, "dfdx")["dfdx"] #shape (n, num_qubits*len(measurement), num_features)
+                kernel_matrix = np.einsum("njl,nlm->njm", self._outer_kernel.dfdx(self._qnn, self._parameters, x, y) , dOdx[:,:,:]) #shape (len(x), len(y), num_features)
             if evaluation_string == "dKdxdx":
                 raise ValueError("Second order derivatives are not implemented for multi-dimensional data.")
         return kernel_matrix
