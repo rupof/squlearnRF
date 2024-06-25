@@ -296,8 +296,6 @@ def train(
         if shot_control is not None:
             if isinstance(shot_control, ShotsFromRSTD):
                 shot_control.set_shots_for_loss()
-        print("PARAM", param_)
-        print("INPUT", input_values)
         loss_values = qnn.evaluate(input_values, param_, param_op_, *loss.loss_args_tuple)
 
         loss_value = loss.value(
@@ -334,7 +332,6 @@ def train(
         f_value = qnn.evaluate(input_values, param_, param_op_, "f")["f"]
         true_solution = loss.get_true_solution()
 
-        print(f_value.shape, true_solution.shape)
 
         return np.mean((f_value - true_solution)**2)
     

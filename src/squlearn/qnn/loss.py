@@ -722,7 +722,7 @@ class ODELoss(LossBase):
     
     def get_derivatives_list_format(self, loss_values):
         """
-        #to be changed to use to be similar to loss_args_tuple
+        #TODO: changed to be similar to loss_args_tuple
         Args:
             loss_values (dict): Contains calculated values of the model
         Returns:
@@ -745,7 +745,6 @@ class ODELoss(LossBase):
         Returns:
             QNN_loss (function): The loss function for the QNN with input in the format of the QNN tuple derivatives
 
-        
         """
         def QNN_loss(QNN_derivatives_values):
             """
