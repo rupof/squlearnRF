@@ -501,8 +501,8 @@ class ODELoss(LossBase):
     #ODELoss and ODE_functional_gradient are functions
     def __init__(self, ODE_functional: Union[bool] = None, ODE_functional_gradient: Union[bool] = None, initial_vec: np.ndarray = None, eta = np.float64(1.0), boundary_handling = "pinned", true_solution = None):
         super().__init__()
-        self._ODE_functional = ODE_functional #F[x, f, f_, f__] returns the value of the ODE functional shape: (n_samples, n_outputs)
-        self._ODE_functional_gradient = ODE_functional_gradient #(dF/df, dF/df_, dF/df__) returns the value of the ODE functional shape: (n_samples, n_outputs)
+        self._ODE_functional = self.create_QNN_ode_loss_format(ODE_functional) #F[x, f, f_, f__] returns the value of the ODE functional shape: (n_samples, n_outputs)
+        self._ODE_functional_gradient = self.create_QNN_ode_gradient_format(ODE_functional_gradient) #(dF/df, dF/df_, dF/df__) returns the value of the ODE functional shape: (n_samples, n_outputs)
         self.initial_vec = initial_vec
         self.eta = eta
         self.boundary_handling = boundary_handling 
@@ -568,8 +568,6 @@ class ODELoss(LossBase):
                 value_dict_floating["dfdxdxdp"] = np.zeros((value_dict_floating["dfdxdx"].shape[0], 1, 1, value_dict_floating["dfdp"].shape[1]))
 
         return value_dict_floating
-
-
                 #value_dict["dfdp"] shape: (n_samples, n_params) f
                 #value_dict["dfdpdx"] shape: (n_samples, 1, n_params)
 
@@ -721,6 +719,66 @@ class ODELoss(LossBase):
                     pass
 
         return d_p, d_op
+    
+    def get_derivatives_list_format(self, loss_values):
+        """
+        #to be changed to use to be similar to loss_args_tuple
+        Args:
+            loss_values (dict): Contains calculated values of the model
+        Returns:
+            x (np.ndarray): The input values
+            f (np.ndarray): The output values
+            dfdx (np.ndarray): The first derivative values
+            dfdxdx (np.ndarray): The second derivative values
+        
+        """
+        try: 
+            dfdxdx = loss_values["dfdxdx"][:,0,0]
+        except:
+            dfdxdx = np.zeros_like(loss_values["f"])   
+        return loss_values["x"], loss_values["f"], loss_values["dfdx"][:,0], dfdxdx
+    
+    def create_QNN_ode_loss_format(self, loss_functional):
+        """
+        Args:
+            loss_functional (function): The loss function for the ODE problem
+        Returns:
+            QNN_loss (function): The loss function for the QNN with input in the format of the QNN tuple derivatives
+
+        
+        """
+        def QNN_loss(QNN_derivatives_values):
+            """
+            Defines the loss function for the ODE problem
+            f_array is assumed to be [x, f, dfdx, dfdxdx]
+            
+            """
+            return loss_functional(self.get_derivatives_list_format(QNN_derivatives_values))
+        return QNN_loss
+
+    def create_QNN_ode_gradient_format(self, ODE_functional_gradient):
+        """
+        Args:
+            ODE_functional_gradient (function): The analytical gradient function of the loss function for the ODE problem
+        Returns:
+            QNN_gradient (function): The gradient of the loss function for the QNN with input in the format of the QNN tuple derivatives        
+        """
+        def QNN_gradient(QNN_derivatives_values):
+            """
+            Defines the gradient of the loss function for the ODE problem
+            f_array is assumed to be [x, f, dfdx, dfdxdx]
+            
+            """
+            dFdf, dFdfdx, dFdfdxdx = ODE_functional_gradient(self.get_derivatives_list_format(QNN_derivatives_values))
+            n_param = QNN_derivatives_values["dfdp"].shape[1]
+            
+            grad_envelope_list = np.zeros((3, QNN_derivatives_values["x"].shape[0], n_param)) # shape (3, n, p)
+            grad_envelope_list[0,:,:] = np.tile(dFdf, (n_param, 1)).T  
+            grad_envelope_list[1,:,:] = np.tile(dFdfdx, (n_param, 1)).T
+            grad_envelope_list[2,:,:] =  np.tile(dFdfdxdx, (n_param, 1)).T
+            return grad_envelope_list
+        return QNN_gradient
+
 
 
 class VarianceLoss(LossBase):
