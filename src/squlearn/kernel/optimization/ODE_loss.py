@@ -30,9 +30,9 @@ class ODE_loss(KernelLossBase):
     --------
     """
 
-    def __init__(self, quantum_kernel: KernelMatrixBase, L_functional: Callable, regularization_parameter=1):
+    def __init__(self, quantum_kernel: KernelMatrixBase, ODE_functional : Callable, regularization_parameter=1):
         super().__init__(quantum_kernel)
-        self.L_functional = L_functional
+        self.ODE_functional  = ODE_functional 
         self.regularization_parameter = regularization_parameter
         self._cached_matrices = None
 
@@ -51,12 +51,12 @@ class ODE_loss(KernelLossBase):
             return np.dot(kernel_tensor[order], alpha) + alpha_[0]
         return np.dot(kernel_tensor[order], alpha) 
     
-    def loss_function(self, alpha_, L_functional, f_initial, x_span, kernel_tensor):
+    def loss_function(self, alpha_, ODE_functional , f_initial, x_span, kernel_tensor):
         """Calculates the loss function, using the L functional, the initial condition and the regularization parameter.
 
         Args:
             alpha_ (np.ndarray): The vector of alphas, of shape (len(x_span)+1, 
-            L_functional (function): The L functional, that describes the argument of the loss function. For example: L_functional = dfdx(alpha, K_1) - g(f(x, alpha, K_0), x)
+            ODE_functional  (function): The L functional, that describes the argument of the loss function. For example: ODE_functional  = dfdx(alpha, K_1) - g(f(x, alpha, K_0), x)
             f_initial (np.ndarray): The initial value of the dependent variable.
             x_span (np.ndarray): The span of the independent variable.
             kernel_tensor (tuple): A tuple containing kernel objects for f_alpha_0 and f_alpha_1.
@@ -66,23 +66,23 @@ class ODE_loss(KernelLossBase):
         """
     
         f_alpha_tensor = np.array([self.f_alpha_order(alpha_, kernel_tensor, i) for i in range(len(kernel_tensor))])
-        sum1 = np.sum((L_functional(f_alpha_tensor, x_span)**2)) #Functional
+        sum1 = np.sum((ODE_functional (f_alpha_tensor, x_span)**2)) #Functional
         sum2 = np.sum((f_alpha_tensor[:,0][:len(f_initial)] - f_initial)**2) #Initial condition
         L = sum2 + sum1 * self.regularization_parameter
 
         return L
     
-    def create_kernel_L_functional(self, L_functional):
+    def create_kernel_ODE_functional (self, ODE_functional ):
         """Creates a wrapper function for the L functional, that takes in the kernel tensor and the x_span as arguments.
 
         Args:
-            L_functional (function): The L functional, that describes the argument of the loss function. For example: L_functional = dfdx(alpha, K_1) - g(f(x, alpha, K_0), x)
+            ODE_functional  (function): The L functional, that describes the argument of the loss function. For example: ODE_functional  = dfdx(alpha, K_1) - g(f(x, alpha, K_0), x)
         Returns:
-            function: a function L_functional, that takes in the kernel tensor and the x_span as arguments.
+            function: a function ODE_functional , that takes in the kernel tensor and the x_span as arguments.
         """
-        def kernel_L_functional(f_alpha_tensor, x_span):
-            return L_functional([x_span, *f_alpha_tensor])
-        return kernel_L_functional
+        def kernel_ODE_functional (f_alpha_tensor, x_span):
+            return ODE_functional([x_span, *f_alpha_tensor])
+        return kernel_ODE_functional 
     
 
     def K_derivatives(self, X_train, y_initial):
@@ -95,9 +95,9 @@ class ODE_loss(KernelLossBase):
         """
         if self._cached_matrices is None:
                 Kmatrix = self._quantum_kernel.evaluate(X_train)
-                dKdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dKdx")
+                dKdx = self._quantum_kernel.evaluate_derivatives(X_train, X_train, ["dKdx"])["dKdx"]
                 if len(y_initial) > 1:
-                    dKdxdx = self._quantum_kernel.evaluate_derivatives(X_train, evaluation_string="dKdxdx")
+                    dKdxdx = self._quantum_kernel.evaluate_derivatives(X_train, X_train, ["dKdxdx"])["dKdxdx"]
                 else:
                     dKdxdx = np.zeros_like(dKdx[:,:])
                 self._cached_matrices = (Kmatrix, dKdx, dKdxdx)
@@ -126,7 +126,7 @@ class ODE_loss(KernelLossBase):
         # Bind training parameters
         self._quantum_kernel.assign_parameters(gate_parameter_values)
         Kmatrix, dKdx, dKdxdx = self.K_derivatives(data, labels)
-        _L_functional = self.create_kernel_L_functional(self.L_functional)
+        _ODE_functional  = self.create_kernel_ODE_functional(self.ODE_functional)
         
-        return self.loss_function(alpha, _L_functional, labels, data, [Kmatrix, dKdx, dKdxdx])
+        return self.loss_function(alpha, _ODE_functional , labels, data, [Kmatrix, dKdx, dKdxdx])
 

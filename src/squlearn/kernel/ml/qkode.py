@@ -27,7 +27,7 @@ class QKODE(BaseEstimator, RegressorMixin):
             setting quantum_kernel="precomputed" (NOT SUPPORTED YET), X is assumed to be a kernel matrix
             (train and test-train). This is particularly useful when storing quantum kernel
             matrices from real backends to numpy arrays.
-        L_functional (Callable) :
+        ODE_functional (Callable) :
             The loss function representing the differential equation to be solved.
         optimizer (OptimizerBase) :
             The optimizer to be used.
@@ -39,14 +39,14 @@ class QKODE(BaseEstimator, RegressorMixin):
     def __init__(
         self,
         quantum_kernel: Optional[Union[KernelMatrixBase, str]] = None,
-        L_functional: Callable = None,
+        ODE_functional: Callable = None,
         optimizer: OptimizerBase = None,
         **kwargs,
     ) -> None:
         self._quantum_kernel = quantum_kernel
         self.X_train = None
         self.y_initial = None
-        self.L_functional = L_functional
+        self.ODE_functional = ODE_functional
         self.optimizer = optimizer
         self.initial_parameters_classical = None
         self.kernel_optimizer = None
@@ -83,7 +83,7 @@ class QKODE(BaseEstimator, RegressorMixin):
             pass
 
         if isinstance(self._quantum_kernel, KernelMatrixBase):
-            self.ode_loss = ODE_loss(quantum_kernel=self._quantum_kernel, L_functional=self.L_functional, **kwargs)
+            self.ode_loss = ODE_loss(quantum_kernel=self._quantum_kernel, ODE_functional=self.ODE_functional, **kwargs)
             self.kernel_optimizer = KernelOptimizer(loss=self.ode_loss, optimizer=self.optimizer)
             self.kernel_optimizer.run_classical_optimization(X=self.X_train, y=y_initial, initial_parameters_classical=initial_parameters_classical)
         elif isinstance(self._quantum_kernel, str):
