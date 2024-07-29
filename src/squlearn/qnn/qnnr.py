@@ -169,6 +169,9 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         loss = self.loss
         if self.variance is not None:
             loss = loss + VarianceLoss(alpha=self.variance)
+            print("Variance Loss is used.")
+        else:
+            print("Variance Loss is not used.!!! ")
 
         if isinstance(self.optimizer, SGDMixin) and self.batch_size:
             if self.opt_param_op:
@@ -237,6 +240,8 @@ class QNNRegressor(BaseQNN, RegressorMixin):
         """Internal fit function."""
         if self.callback == "pbar":
             self._pbar = tqdm(total=self._total_iterations, desc="fit", file=sys.stdout)
+        elif self.callback == "ode":
+            self._ode_callback = True
         self.partial_fit(X, y, weights)
         if self.callback == "pbar":
             self._pbar.close()

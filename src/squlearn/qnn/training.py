@@ -219,6 +219,7 @@ def train(
     shot_control: ShotControlBase = None,
     weights: Union[list, np.ndarray] = None,
     opt_param_op: bool = True,
+    print_numerical_grad: bool = True,
 ):
     """
     Function for training a given QNN.
@@ -257,7 +258,6 @@ def train(
             f"Shape {weights_values.shape} of weight values doesn't match shape"
             f" {np.shape(ground_truth)} of reference values"
         )
-
     # Preprocessing of the input values in case of lists
     if not isinstance(param_ini, np.ndarray):
         param = np.array([param_ini])
@@ -267,7 +267,7 @@ def train(
         param_op = np.array([param_op_ini])
     else:
         param_op = param_op_ini
-
+    
     # Merge initialization values for minimize
     val_ini = param
     if opt_param_op:
@@ -296,7 +296,6 @@ def train(
         if shot_control is not None:
             if isinstance(shot_control, ShotsFromRSTD):
                 shot_control.set_shots_for_loss()
-
         loss_values = qnn.evaluate(input_values, param_, param_op_, *loss.loss_args_tuple)
 
         loss_value = loss.value(
@@ -305,8 +304,37 @@ def train(
             weights=weights_values,
             iteration=iteration,
         )
+        print("current LOSS", loss_value)
         return loss_value
+    
+    def _fun_mse(theta):
+        nonlocal iteration
+        nonlocal optimizer
+        nonlocal param_op
+        if isinstance(optimizer, IterativeMixin):
+            iteration = optimizer.iteration
+        else:
+            iteration = None
 
+        # Splitting theta in the arrays
+        if opt_param_op:
+            param_ = theta[: len(param_ini)]
+            param_op_ = theta[len(param_ini) :]
+        else:
+            param_ = theta
+            param_op_ = param_op
+
+        # Shot controlling
+        if shot_control is not None:
+            if isinstance(shot_control, ShotsFromRSTD):
+                shot_control.set_shots_for_loss()
+        
+        f_value = qnn.evaluate(input_values, param_, param_op_, "f")["f"]
+        true_solution = loss.get_true_solution()
+
+
+        return np.mean((f_value - true_solution)**2)
+    
     def _grad(theta):
         nonlocal iteration
         nonlocal optimizer
@@ -343,8 +371,13 @@ def train(
                     shot_control.set_shots_for_grad(value=loss_values, variance=loss_variance)
                 else:
                     raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")
+        #print("Before gradient calculation")
+        #print("PARAM", param_)
+        #print("param_op_", param_op_)
+        #print("gradient args tuple", loss.gradient_args_tuple)
 
         grad_values = qnn.evaluate(input_values, param_, param_op_, *loss.gradient_args_tuple)
+
         grad = np.concatenate(
             loss.gradient(
                 grad_values,
@@ -356,6 +389,38 @@ def train(
             ),
             axis=None,
         )
+        if print_numerical_grad:
+            if iteration % 80 == 0:
+                #Numerical Difference Grad to check
+                grad_numerical = np.zeros(len(param_))
+                for i in range(len(param_)):
+                    epsilon = 1e-10
+                    param_numerical_plus = np.copy(param_)
+                    param_numerical_plus[i] += epsilon
+                    loss_values_plus = qnn.evaluate(input_values, param_numerical_plus, param_op_, *loss.loss_args_tuple)
+                    loss_values_plus = loss.value(
+                        loss_values_plus,
+                        ground_truth=ground_truth,
+                        weights=weights_values,
+                        iteration=iteration,
+                    )
+
+
+                
+                    param_numerical_minus = np.copy(param_)
+                    param_numerical_minus[i] -= epsilon
+                    loss_values_minus = qnn.evaluate(input_values, param_numerical_minus, param_op_, *loss.loss_args_tuple)
+                    loss_values_minus = loss.value(
+                        loss_values_minus,
+                        ground_truth=ground_truth,
+                        weights=weights_values,
+                        iteration=iteration,
+                    )
+                    grad_numerical[i] = (loss_values_plus - loss_values_minus)/(2*epsilon)
+
+                #print("NUMERICAL GRAD", grad_numerical)
+                #print("GRAD and sum", grad, np.sum(grad))
+                #print("DIFF", np.linalg.norm(grad - grad_numerical))
         return grad
 
     if len(val_ini) == 0:
@@ -364,7 +429,15 @@ def train(
         else:
             return np.array([])
 
-    result = optimizer.minimize(_fun, val_ini, _grad, bounds=None)
+    try:
+        true_solution = loss.get_true_solution()
+    except:
+        true_solution = None
+    
+    if true_solution is not None:
+        result = optimizer.minimize(_fun, val_ini, _grad, bounds=None, mse_fun = _fun_mse)
+    else:
+        result = optimizer.minimize(_fun, val_ini, _grad, bounds=None)
 
     if hasattr(result, "x"):
         result = result.x
@@ -375,6 +448,7 @@ def train(
         return param, param_op
 
     param = result
+
     return param
 
 
