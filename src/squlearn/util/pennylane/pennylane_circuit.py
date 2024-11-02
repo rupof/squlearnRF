@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Union, List
 from sympy import lambdify, sympify
+import torch
 
 from qiskit.circuit import QuantumCircuit
 from qiskit.circuit import ParameterExpression
@@ -17,6 +18,8 @@ from pennylane.operation import Observable as PennyLaneObservable
 
 from .pennylane_gates import qiskit_pennylane_gate_dict
 from ..executor import Executor
+
+
 
 
 def _get_sympy_interface():
@@ -485,7 +488,8 @@ class PennyLaneCircuit:
             circ_param_list = sum(
                 [list(args[i]) for i in range(len(self._pennylane_gates_parameters))], []
             )
-
+            circ_param_list = torch.unbind(circ_param_list[0], dim=0)     
+            #print("circ_param_list printed", circ_param_list)
             # Collects the args values connected to the observable parameters
             obs_param_list = sum(
                 [
@@ -505,6 +509,7 @@ class PennyLaneCircuit:
                         for j, wire in enumerate(self._pennylane_gates_wires[i]):
                             measurements[op[1][j]] = qml.measure(wire)
                 else:
+                    #print("pn gate params function", len(self._pennylane_gates_param_function))
                     # Evaluate the (non-linear) parameter expression of the gate
                     if self._pennylane_gates_param_function[i] != None:
                         evaluated_param = tuple(

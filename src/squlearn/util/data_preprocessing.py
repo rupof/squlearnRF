@@ -84,7 +84,9 @@ def _adjust_input(
     if error:
         raise ValueError("Wrong format of an input variable.")
 
-    return convert_to_float64(xx), multiple_inputs
+    return xx, multiple_inputs
+
+#    return convert_to_float64(xx), multiple_inputs
 
 
 def convert_to_float64(x: Union[float, np.ndarray, list]) -> np.ndarray:

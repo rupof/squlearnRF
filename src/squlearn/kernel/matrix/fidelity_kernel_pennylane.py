@@ -67,7 +67,7 @@ class FidelityKernelPennyLane:
 
             @lru_cache(maxsize=self._cache_size)
             def pennylane_circuit_executor(*args, **kwargs):
-                args_numpy = [np.array(arg) for arg in args]
+                args_numpy = [arg for arg in args]
                 return self._executor.pennylane_execute(
                     self._pennylane_circuit, *args_numpy, **kwargs
                 )
@@ -131,7 +131,6 @@ class FidelityKernelPennyLane:
 
         if y is None:
             y = x
-
         kernel_matrix = np.ones((x.shape[0], y.shape[0]))
 
         if self._executor.is_statevector:
@@ -229,6 +228,9 @@ class FidelityKernelPennyLane:
 
         return kernel_matrix
 
+    
+    
+
     def _pennylane_evaluate_kernel_sv(self, x, y):
         """
         Function to evaluate the kernel matrix with statevector simulator using PennyLane.
@@ -244,24 +246,46 @@ class FidelityKernelPennyLane:
         Returns:
             np.ndarray: Quantum kernel matrix as 2D numpy array.
         """
+        def check_grad(tensor, name="Tensor"):
+            if tensor.requires_grad:
+                if tensor.grad is not None:
+                    print(f"{name} is being tracked by autograd and has gradients.")
+                else:
+                    print(f"{name} is being tracked by autograd but has no gradients yet.")
+            else:
+                print(f"{name} is not being tracked by autograd.")
+        no_torch = False
+        if no_torch == False:
+            import torch
         shots = self._executor.shots
+        #print("x is it tensor _pennylane_evaluate_kernel_sv", x.type())
         self._executor.set_shots(None)
         is_symmetric = np.array_equal(x, y)
 
         def get_kernel_entry(x: np.ndarray, y: np.ndarray) -> float:
             """Compute the kernel entry based on the overlap x and y."""
             # Calculate overlap between statevector x and y
-            overlap = np.abs(np.matmul(x.conj(), y)) ** 2
+            if no_torch:
+                overlap = np.abs(np.matmul(x.conj(), y)) ** 2
+            else:
+                #make x and y torch tensors
+                overlap = torch.abs(torch.matmul(x.conj(), y)) ** 2
             # If shots are set, draw from the binomial distribution
             if shots is not None and shots > 1:
                 overlap = algorithm_globals.random.binomial(n=shots, p=overlap) / shots
             return overlap
 
         # Convert the input data to the correct format for the lrucache
-        x_inp, _ = adjust_features(x, self.num_features)
-        x_inpT = to_tuple(np.transpose(x_inp), flatten=False)
-        y_inp, _ = adjust_features(y, self.num_features)
-        y_inpT = to_tuple(np.transpose(y_inp), flatten=False)
+        if no_torch:
+            x_inp, _ = adjust_features(x, self.num_features)
+            x_inpT = to_tuple(np.transpose(x_inp), flatten=False)
+            y_inp, _ = adjust_features(y, self.num_features)
+            y_inpT = to_tuple(np.transpose(y_inp), flatten=False)
+        else:
+            x_inp, _ = adjust_features(x, self.num_features)
+            x_inpT = to_tuple(torch.transpose(x_inp, 0, 1), flatten=False)
+            y_inp, _ = adjust_features(y, self.num_features)
+            y_inpT = to_tuple(torch.transpose(y_inp, 0, 1), flatten=False)
 
         if self._parameter_vector is not None:
             if self._parameters is None:
@@ -271,18 +295,25 @@ class FidelityKernelPennyLane:
             x_sv = np.array(self._pennylane_circuit_cached(tuple(self._parameters), x_inpT))
             y_sv = np.array(self._pennylane_circuit_cached(tuple(self._parameters), y_inpT))
         else:
-            x_sv = np.array(self._pennylane_circuit_cached(x_inpT))
-            y_sv = np.array(self._pennylane_circuit_cached(y_inpT))
-
+            if no_torch:
+                x_sv = np.array(self._pennylane_circuit_cached(x_inpT))
+                y_sv = np.array(self._pennylane_circuit_cached(y_inpT))
+            else:
+                x_sv = self._pennylane_circuit_cached(x_inpT)
+                y_sv = self._pennylane_circuit_cached(y_inpT)
         if len(x_sv.shape) == 1:
             x_sv = np.array([x_sv])
         if len(y_sv.shape) == 1:
             y_sv = np.array([y_sv])
 
-        kernel_matrix = np.zeros((x.shape[0], y.shape[0]))
+        if no_torch:
+            kernel_matrix = np.zeros((x.shape[0], y.shape[0]))
+        else:
+            kernel_matrix = torch.zeros((x.shape[0], y.shape[0]))
 
         if is_symmetric:
             # pylint: disable-next=consider-using-enumerate
+            check_grad(x_sv, "x_sv")
             for i in range(len(x_sv)):
                 # pylint: disable-next=consider-using-enumerate
                 for j in range(i):
@@ -293,6 +324,7 @@ class FidelityKernelPennyLane:
                             continue
                     kernel_matrix[i, j] = get_kernel_entry(x_sv[i], y_sv[j])
                     kernel_matrix[j, i] = kernel_matrix[i, j]
+            check_grad(kernel_matrix, "kernel_matrix")
         else:
             for i, x_ in enumerate(x_sv):
                 for j, y_ in enumerate(y_sv):

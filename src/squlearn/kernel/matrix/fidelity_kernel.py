@@ -253,9 +253,10 @@ class FidelityKernel(KernelMatrixBase):
 
         if y is None:
             y = x
+        #print("x: first evaluate general_class ", x.type())
 
-        x = convert_to_float64(x)
-        y = convert_to_float64(y)
+        #x = convert_to_float64(x)
+        #y = convert_to_float64(y)
 
         if self._parameter_vector is not None:
             if self._parameters is None:
