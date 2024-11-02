@@ -15,6 +15,7 @@ from .circuit_library.qiskit_encoding_circuit import QiskitEncodingCircuit
 from .circuit_library.random_encoding_circuit import RandomEncodingCircuit
 from .circuit_library.random_layered_encoding_circuit import RandomLayeredEncodingCircuit
 from .circuit_library.kyriienko_nonlinear_encoding_circuit import KyriienkoEncodingCircuit
+from .circuit_library.hamiltonian_evolution_circuit import HamiltonianEvolutionCircuit
 
 __all__ = [
     "PrunedEncodingCircuit",
@@ -36,4 +37,5 @@ __all__ = [
     "RandomEncodingCircuit",
     "RandomLayeredEncodingCircuit",
     "KyriienkoEncodingCircuit",
+    "HamiltonianEvolutionCircuit",
 ]
