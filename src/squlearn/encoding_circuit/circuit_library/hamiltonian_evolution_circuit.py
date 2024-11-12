@@ -54,13 +54,14 @@ class HamiltonianEvolutionEncodingCircuit(EncodingCircuitBase):
         evolution_time_t: float = 1.0,
         trotterize: bool = True,
         use_random_initial_state: bool = True,
+        random_initial_state_seed: int = 1,
     ) -> None:
         super().__init__(num_features + 1, num_features)
         self._num_layers = num_layers_T
         self.evolution_time_t = evolution_time_t
         self.trotterize = trotterize
         self.use_random_initial_state = use_random_initial_state
-        self.random_initial_state_seed = 1
+        self.random_initial_state_seed = random_initial_state_seed
 
     @property
     def num_layers(self) -> int:
