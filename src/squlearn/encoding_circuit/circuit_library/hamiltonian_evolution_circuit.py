@@ -7,7 +7,7 @@ from qiskit.quantum_info import random_statevector
 from ..encoding_circuit_base import EncodingCircuitBase
 
 
-class HamiltonianEvolution_EncodingCircuit(EncodingCircuitBase):
+class HamiltonianEvolutionEncodingCircuit(EncodingCircuitBase):
     """
     
     Creates the data reuploading encoding circuit as presented in reference [1], Eq. L4. The circuits encodes classical data in an evolving 1D Heisenberg model with interactions [1]. The encoding circuit is defined as:
