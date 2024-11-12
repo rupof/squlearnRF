@@ -34,22 +34,17 @@ class HamiltonianEvolutionEncodingCircuit(EncodingCircuitBase):
         use_random_initial_state (bool): Whether to use a random initial state for the encoding circuit.
         random_initial_state_seed (int): The seed for the random initial state generator, if use_random_initial_state is True.
 
-    The implementation was inspired by Ref. [2].
+    The implementation was inspired by Ref. [2]. To check that the hamiltonian contributions :math:`e^{-i t x_j/2T (XX + YY + ZZ)}` are correct, it can be verified that the following relations hold:
+
+    .. math::
+        e^{-i X \otimes X x_j/2} = (H \otimes H) CNOT (I \otimes e^{-i Zx_j/2} ) CNOT (H \otimes H) = (H \otimes H) CNOT (I \otimes R_z(x_j) ) CNOT (H \otimes H)
+        e^{-i Y \otimes Y x_j/2} = (R_x(-\pi/2) \otimes R_x(-\pi/2)) CNOT (I \otimes e^{-i Zx_j/2} ) CNOT (R_x(\pi/2) \otimes R_x(\pi/2)) = (R_x(-\pi/2) \otimes R_x(-\pi/2)) CNOT (I \otimes R_z(x_j) ) CNOT (R_x(\pi/2) \otimes R_x(\pi/2))
+        e^{-i Z \otimes Z x_j/2} = CNOT (I \otimes e^{-i Zx_j/2} ) CNOT =  CNOT (I \otimes R_z(x_j) ) CNOT 
 
     References
     ----------
     [1]:  H. Y. Huang et al., "Power of data in quantum machine learning". Nat. Commun. 12, 2631 (2021). <https://www.nature.com/articles/s41467-021-22539-9> 
-    [2]:  Shaydulin, R. & Wild, S. M. Importance of Kernel Bandwidth in Quantum Machine Learning. GitHub repository, <https://github.com/rsln-s/Importance-of-Kernel-Bandwidth-in-Quantum-Machine-Learning/tree/main>
-
-    Notes
-    -----
-
-    To check that the hamiltonian contributions :math:`e^{-i t x_j/2T (XX + YY + ZZ)}` are correct, it can be verified that the following relations hold:
-
-    .. math::
-        e^{-i X \otimes X x_j/2} = (H \otimes H) CNOT (I \otimes e^{-Zx_j/2} ) CNOT (H \otimes H) = (H \otimes H) CNOT (I \otimes R_z(x_j) ) CNOT (H \otimes H)
-        e^{-i Y \otimes Y x_j/2} = (R_x(-\pi/2) \otimes R_x(-\pi/2)) CNOT (I \otimes e^{-Zx_j/2} ) CNOT (R_x(\pi/2) \otimes R_x(\pi/2)) = (R_x(-\pi/2) \otimes R_x(-\pi/2)) CNOT (I \otimes R_z(x_j) ) CNOT (R_x(\pi/2) \otimes R_x(\pi/2))
-        e^{-i Z \otimes Z x_j/2} = CNOT (I \otimes e^{-Zx_j/2} ) CNOT =  CNOT (I \otimes R_z(x_j) ) CNOT 
+    [2]:  Shaydulin, R. & Wild, S. M. Importance of Kernel Bandwidth in Quantum Machine Learning. GitHub repository, utils.py, <https://github.com/rsln-s/Importance-of-Kernel-Bandwidth-in-Quantum-Machine-Learning/tree/main>
 
     """
 
@@ -59,12 +54,13 @@ class HamiltonianEvolutionEncodingCircuit(EncodingCircuitBase):
         num_layers_T: int = 1,
         evolution_time_t: float = 1.0,
         trotterize: bool = True,
+        use_random_initial_state: bool = True,
     ) -> None:
         super().__init__(num_features+1, num_features)
         self._num_layers = num_layers_T
         self.evolution_time_t = evolution_time_t
         self.trotterize = trotterize 
-        self.use_random_initial_state = False
+        self.use_random_initial_state = use_random_initial_state
         self.random_initial_state_seed = 1
 
     @property
