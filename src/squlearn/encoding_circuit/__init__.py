@@ -17,6 +17,7 @@ from .circuit_library.random_layered_encoding_circuit import RandomLayeredEncodi
 from .circuit_library.kyriienko_nonlinear_encoding_circuit import KyriienkoEncodingCircuit
 from .circuit_library.hamiltonian_evolution_circuit import HamiltonianEvolutionEncodingCircuit
 
+print("squlearn.encoding_circuit.__init__.py running")
 __all__ = [
     "PrunedEncodingCircuit",
     "TranspiledEncodingCircuit",
