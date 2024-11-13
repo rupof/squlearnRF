@@ -86,6 +86,7 @@ class HamiltonianEvolutionEncodingCircuit(EncodingCircuitBase):
     def get_circuit(
         self,
         features: Union[ParameterVector, np.ndarray],
+        parameters: Union[ParameterVector, np.ndarray] = None,
     ) -> QuantumCircuit:
         """
         Return the circuit of the Hamiltonian Evolution encoding circuit.
