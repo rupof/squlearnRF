@@ -8,7 +8,7 @@ from squlearn.encoding_circuit.circuit_library.yz_cx_encoding_circuit import YZ_
 from squlearn.kernel import FidelityKernel, ProjectedQuantumKernel, KernelOptimizer
 from squlearn.kernel import KernelOptimizer
 from squlearn.kernel import QGPR, QGPC, QKRR, QSVC, QSVR
-from squlearn.kernel.loss import NLL, TargetAlignment
+from squlearn.kernel.loss import NLL, TargetAlignment, ODELoss
 
 from squlearn.optimizers.adam import Adam
 
