@@ -98,16 +98,7 @@ class ODELoss(KernelLossBase):
         data: np.ndarray,
         labels: np.ndarray,
     ) -> float:
-        """Compute the negative log likelihood loss function.
-
-        Args:
-            parameter_values (np.ndarray): The parameter values for the variational quantum
-                                           kernel parameters.
-            data (np.ndarray): The training data to be used for the kernel matrix.
-            labels (np.ndarray): The training labels.
-
-        Returns:
-            float: The negative log likelihood loss value.
+        """
         """
 
         if self._quantum_kernel is None:
@@ -140,12 +131,12 @@ class ODELoss(KernelLossBase):
             """
             alpha = alpha_[1:]
             if order == 0:
-                return np.dot(kernel_tensor[order], alpha) + alpha_[0]
-            return np.dot(kernel_tensor[order], alpha) 
+                return np.dot(kernel_tensor[order], alpha).reshape(-1, 1) + alpha_[0]
+            return np.dot(kernel_tensor[order], alpha).reshape(-1, 1)
 
 
         f_alpha_tensor = np.array([f_alpha_order(parameter_values, kernel_tensor, i) for i in range(self.order_of_ODE+1)])        
-        sum1 = np.sum((self.ODE_functional([data, *f_alpha_tensor])**2)-labels) #Functional
+        sum1 = np.sum((self.ODE_functional([data, *f_alpha_tensor])**2)) #Functional
         sum2 = np.sum((f_alpha_tensor[:,0][:len(self.initial_values)] - self.initial_values)**2) #Initial condition
         L = sum2 + sum1 * self.eta
         

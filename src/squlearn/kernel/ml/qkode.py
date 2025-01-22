@@ -120,11 +120,9 @@ class QKODE(BaseEstimator):
         Return:
             Returns an instance of self.
         """
-
-        # X, y = self._validate_data(
-        #     X, y, accept_sparse=("csr", "csc"), multi_output=True, y_numeric=True
-        # )
-
+        X, y = self._validate_data(
+            X, y, accept_sparse=("csr", "csc"), multi_output=True, y_numeric=True
+        )
         self.X_train = X
 
         if isinstance(self._quantum_kernel, str):

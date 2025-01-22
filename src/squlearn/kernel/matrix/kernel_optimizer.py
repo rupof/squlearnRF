@@ -72,9 +72,7 @@ class KernelOptimizer(KernelMatrixBase):
         
         # Perform kernel optimization
         loss_function = partial(self._loss.compute, data=X, labels=y)
-        print("initial params alpha in kernel optimizer \n ", self._initial_parameters)
         opt_result = self._optimizer.minimize(fun=loss_function, x0=self._initial_parameters)
-        print("optimla result in kernel optiimzer", opt_result.x)
         self._optimal_parameters = opt_result.x
 
         # Assign optimal parameters to the quantum kernel
