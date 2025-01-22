@@ -91,10 +91,9 @@ class ODELoss(KernelLossBase):
                 " An alternative is to set-up coupled 1rst order DEs (currently not implemented)"
             )
         elif order_of_ODE > 2:
-            raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")
+            raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")    
     def compute(
         self,
-        kernel_tensor: np.ndarray,
         parameter_values: np.ndarray,
         data: np.ndarray,
         labels: np.ndarray,
@@ -112,22 +111,28 @@ class ODELoss(KernelLossBase):
         """
 
         if self._quantum_kernel is None:
-            raise ValueError(
-                "Quantum kernel is not set, please set the quantum kernel with set_quantum_kernel method"
+            print(
+                "Quantum kernel is not set, please set the quantum kernel with set_quantum_kernel method, we are using a precomputed kernel matrix."
             )
+        else:
+            # Bind training parameters
+            if self._quantum_kernel.num_parameters > 0:
+                raise ValueError(
+                    "QKODE with a parameterized quantum kernel is not supported yet."
+                )            #TODO implement random parameter generation instead of valueerror
+            else:
+                kernel_tensor = [self._quantum_kernel.evaluate_derivatives(data, values = "K"), 
+                             self._quantum_kernel.evaluate_derivatives(data, values = "dKdx")]
+                if self.order_of_ODE > 2:
+                    kernel_tensor.append(self._quantum_kernel.evaluate_derivatives(data, values = "dKdxdx"))
 
-        # Bind training parameters
-        if self._quantum_kernel.num_parameters > 0:
-            raise ValueError(
-                "QKODE with a parameterized quantum kernel is not supported yet."
-            )
         
-        def f_alpha_order(self, alpha_, kernel_tensor, order):
+        def f_alpha_order(alpha_, kernel_tensor, order):
             """Calculates f_alpha.
 
             Args:
                 alpha_ (np.ndarray): The vector of alphas, of shape (len(x_span)+1, 1).
-                kernel_tensor (tuple): A tuple containing kernel objects for f_alpha_0 and f_alpha_1.
+                kernel_tensor (tuple): A tuple containing kernel objects for f_alpha_0 and f_alpha_1. 
                 order (int): Order of the kernel.
 
             Returns:
@@ -138,26 +143,10 @@ class ODELoss(KernelLossBase):
                 return np.dot(kernel_tensor[order], alpha) + alpha_[0]
             return np.dot(kernel_tensor[order], alpha) 
 
-        if kernel_tensor is None:
-            kernel_tensor = [self._quantum_kernel.evaluate_derivatives(data, values = "K")["K"], 
-                             self._quantum_kernel.evaluate_derivatives(data, values = "dKdx")["dKdx"]]
-            if self.order_of_ODE > 2:
-                kernel_tensor.append(self._quantum_kernel.evaluate_derivatives(data, values = "dKdxdx")["dKdxdx"])
 
-
-        print("TESTING f_alpha_tensor")
-        f_alpha_tensor = np.array([f_alpha_order(parameter_values, kernel_tensor, i) for i in range(len(kernel_tensor))])
-        print(f_alpha_tensor)
-
-        print("TESTING ODE_functional")
-        sum1 = np.sum((self.ODE_functional(f_alpha_tensor, data)**2)) #Functional
-        print(sum1)
-
-        print("TESTING initial_values")
+        f_alpha_tensor = np.array([f_alpha_order(parameter_values, kernel_tensor, i) for i in range(self.order_of_ODE+1)])        
+        sum1 = np.sum((self.ODE_functional([data, *f_alpha_tensor])**2)-labels) #Functional
         sum2 = np.sum((f_alpha_tensor[:,0][:len(self.initial_values)] - self.initial_values)**2) #Initial condition
-        print(sum2)
         L = sum2 + sum1 * self.eta
-
         
-
         return L

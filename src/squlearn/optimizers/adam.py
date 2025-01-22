@@ -123,7 +123,7 @@ class Adam(OptimizerBase, SGDMixin):
                 fval = None
             else:
                 fval = fun(self.x)
-
+            print(fval)
             # Calculate the gradient and average it over the last num_average gradients
             # (1 is default: no averaging)
             self.gradient_deque.append(grad(self.x))

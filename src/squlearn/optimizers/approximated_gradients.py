@@ -59,7 +59,10 @@ class FiniteDiffGradient(ApproxGradientBase):
 
         """
         if len(x.shape) != 1:
-            raise ValueError("Unsupported shape of x!")
+            if x.shape[1] == 1 or x.shape[0] == 1:
+                x = x.flatten()
+            else:
+                raise ValueError("Unsupported shape of x!")
 
         if self.formula == "forward":
             f0 = self.fun(x)
