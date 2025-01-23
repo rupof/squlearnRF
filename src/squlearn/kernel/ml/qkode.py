@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 
 class QKODE(BaseEstimator):
     r"""
-    Quantum Kernel Ridge Regression.
+    Quantum Kernel ODE.
 
     This class implements the Quantum Kernel Ridge Regression analogous to KRR [1] in scikit-learn
     but is not a wrapper.
