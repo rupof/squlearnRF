@@ -11,7 +11,28 @@ from ..matrix.kernel_matrix_base import KernelMatrixBase
 
 class ODELoss(KernelLossBase):
     r"""
-    
+    Ordinary Differential Equation (ODE) loss function for Quantum Kernels.
+
+    This class implements the ODE loss function for Quantum Kernels. The ODE loss function is
+    defined as the sum of the squared residuals of the ODE functional and the initial conditions.
+
+    Args:
+        ODE_functional (Union[Callable, sympy.Expr]): Functional representation of the ODE
+                                                      (Homogeneous diferential equation).
+                                                      This can be a callable function or a
+                                                      sympy expression.
+        symbols_involved_in_ODE (list): The list of symbols involved in the ODE problem. The
+                                        list of symbols should be in order of differentiation,
+                                        with the first element being the independent variable,
+                                        i.e. [x, f, dfdx, dfdxdx]
+        initial_values (np.ndarray): Initial values of the ODE
+        eta (float): Weighting factor for the ODE functional
+        boundary_handling (str): Method for handling boundary conditions. Currently only "pinned"
+                                    is supported.   
+        
+        
+
+
     Methods:
     --------
     """
@@ -92,6 +113,16 @@ class ODELoss(KernelLossBase):
             )
         elif order_of_ODE > 2:
             raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")    
+        
+    def set_quantum_kernel(self, quantum_kernel: KernelMatrixBase) -> None:
+        """
+        Set the quantum kernel to be used in the loss function.
+
+        Args:
+            quantum_kernel (KernelMatrixBase): The quantum kernel to be used in the loss function.
+        """
+        self._quantum_kernel = quantum_kernel
+
     def compute(
         self,
         parameter_values: np.ndarray,

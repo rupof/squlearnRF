@@ -75,10 +75,6 @@ class KernelOptimizer(KernelMatrixBase):
         opt_result = self._optimizer.minimize(fun=loss_function, x0=self._initial_parameters)
         self._optimal_parameters = opt_result.x
 
-        # Assign optimal parameters to the quantum kernel
-        if isinstance(self._loss, ODELoss) == False:
-            self._quantum_kernel.assign_parameters(self._optimal_parameters)
-
         self._is_fitted = True
 
         return opt_result
