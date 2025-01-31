@@ -18,26 +18,13 @@ class QKODE(QKRR):
     Quantum Kernel Ordinary Differential Equation (QKODE) solver.
 
     This class implements a quantum kernel-based solver for ordinary differential equations
-    using ridge regression. It extends the Quantum Kernel Ridge Regression (QKRR) model.
+    (ODEs) using the mixed model regression method as described in Ref. [1].
 
     Args:
-        quantum_kernel (Optional[Union[KernelMatrixBase, str]]) :
-            The quantum kernel matrix to be used in the KRR pipeline (either a fidelity
-            quantum kernel (FQK) or projected quantum kernel (PQK) must be provided). By
-            setting quantum_kernel="precomputed", X is assumed to be a kernel matrix
-            (train and test-train). This is particularly useful when storing quantum kernel
-            matrices from real backends to numpy arrays.
-        loss (KernelLossBase) :
-            The loss function to be minimized.
-        alpha (Union[float, np.ndarray], default=1.0e-6) :
-            Hyperparameter for the regularization strength; must be a positive float. This
-            regularization improves the conditioning of the problem and assure the solvability
-            of the resulting linear system. Larger values specify stronger regularization, cf.,
-            e.g., Ref. [2]
-        optimizer (OptimizerBase) :
-            The optimizer to be used.
-        **kwargs: Keyword arguments for the quantum kernel matrix, possible arguments can be obtained
-            by calling ``get_params()``. 
+        quantum_kernel (Optional[Union[KernelMatrixBase, str]]): Quantum kernel to be used in the model. If set to "precomputed", the derivatives of the kernel matrix have to be provided in the fit method. 
+        loss (KernelLossBase): Loss function to be used for training the model.
+        optimizer (OptimizerBase): Optimizer to be used for minimizing the loss function.
+        **kwargs: Additional keyword arguments to be passed to the base class.
      
      Attributes:
     -----------
@@ -47,6 +34,10 @@ class QKODE(QKRR):
             Training kernel matrix of shape (n_train, n_train) which is available after calling the fit procedure
         k_testtrain (np.ndarray) :
             Kernel matrix of shape (n_test, n_train) which is evaluated at the predict step
+
+    References
+    ----------
+    [1]: A. Paine et al., "Quantum kernel methods for solving regression problems and differential equations", Phys. Rev. A 107, 032428
 
     
     Methods:
@@ -64,9 +55,12 @@ class QKODE(QKRR):
         self._loss = loss
         self._loss.set_quantum_kernel(quantum_kernel)
         self._optimizer = optimizer
+        self.k_train = None
+        self.dkdx_train = None
+        self.dkdxdx_train = None
         
 
-    def fit(self, X, y, param_ini = None, K = None, dKdx = None):
+    def fit(self, X, y, param_ini = None, K = None, dKdx = None, dKdxdx = None):
         """
         
         """
@@ -80,6 +74,8 @@ class QKODE(QKRR):
             if self._quantum_kernel == "precomputed":
                 self.k_train = K
                 self.dkdx_train = dKdx
+                if self._loss.order_of_ODE == 2:
+                    self.dkdxdx_train = dKdxdx
             else:
                 raise ValueError("Unknown quantum kernel: {}".format(self._quantum_kernel))
         elif isinstance(self._quantum_kernel, KernelMatrixBase):
@@ -90,6 +86,8 @@ class QKODE(QKRR):
 
             self.k_train = self._quantum_kernel.evaluate_derivatives(self.X_train, values = "K")
             self.dkdx_train = self._quantum_kernel.evaluate_derivatives(self.X_train, values = "dKdx")
+            if self._loss.order_of_ODE == 2:
+                self.dkdxdx_train = self._quantum_kernel.evaluate_derivatives(self.X_train, self.X_train, values = "dKdxdx")
 
         else:
             raise ValueError(
@@ -102,7 +100,7 @@ class QKODE(QKRR):
 
         
         #pass self into the loss function 
-        loss_function = partial(self._loss.compute, data=X, labels=y, kernel_tensor=[self.k_train, self.dkdx_train]) 
+        loss_function = partial(self._loss.compute, data=X, labels=y, kernel_tensor=[self.k_train, self.dkdx_train, self.dkdxdx_train]) 
         opt_result = self._optimizer.minimize(fun=loss_function, x0=param_ini)
         self.dual_coeff_ = opt_result.x    
         self._is_fitted = True

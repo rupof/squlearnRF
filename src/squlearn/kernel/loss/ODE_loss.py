@@ -11,27 +11,74 @@ from ..matrix.kernel_matrix_base import KernelMatrixBase
 
 class ODELoss(KernelLossBase):
     r"""
-    Ordinary Differential Equation (ODE) loss function for Quantum Kernels.
+    Ordinary Differential Equation (ODE) loss function for Quantum Kernels. It uses the same style as the QNN ODE loss function.
 
     This class implements the ODE loss function for Quantum Kernels. The ODE loss function is
     defined as the sum of the squared residuals of the ODE functional and the initial conditions.
 
-    Args:
-        ODE_functional (Union[Callable, sympy.Expr]): Functional representation of the ODE
-                                                      (Homogeneous diferential equation).
-                                                      This can be a callable function or a
-                                                      sympy expression.
-        symbols_involved_in_ODE (list): The list of symbols involved in the ODE problem. The
-                                        list of symbols should be in order of differentiation,
-                                        with the first element being the independent variable,
-                                        i.e. [x, f, dfdx, dfdxdx]
-        initial_values (np.ndarray): Initial values of the ODE
-        eta (float): Weighting factor for the ODE functional
-        boundary_handling (str): Method for handling boundary conditions. Currently only "pinned"
-                                    is supported.   
-        
-        
+    Implements an ODE Loss based on the mixed model regression algorithm of Ref. [1].
 
+    Args:
+        ODE_functional (sympy.Expr): Functional representation of the ODE (Homogeneous diferential
+            equation). Must be a sympy expression and ``symbols_involved_in_ODE`` must be provided.
+        symbols_involved_in_ODE (list): List of sympy symbols involved in the ODE functional.
+            The list must be ordered as follows: ``[x, f, dfdx]`` where each element is a sympy
+            symbol corresponding to the independent variable (``x``), the dependent variable
+            (``f``), and the first derivative of the dependent variable (``dxfx``), respectively.
+            There are no requirements for the symbols beyond the correct order, for example,
+            ``[t, y, dydt]``.
+        initial_values (np.ndarray): Initial values of the ODE. The length of the array
+            must match the order of the ODE.
+        boundary_handling (str): Method for handling the boundary conditions. Currently, only
+            ``'pinned'``, 
+
+                * ``'pinned'``:  An extra term is added to the loss function to enforce the initial
+                  values of the ODE. This term is pinned by the ``eta`` parameter. The
+                  loss function is given by: :math:`L = \sum_{i=0}^{n} L_{\theta_i}\left( \dot{f},
+                  f, x  \right) + \eta \cdot (f(x_0) - f_0)^2`,
+                  with :math:`f(x) = \sum \alpha_i k(x_i, x)`.
+                
+        eta (float): Weight for the initial values of the ODE in the loss function for the "pinned"
+            boundary handling method.
+
+        **Example**
+
+        1. Implements a loss function for the ODE :math:`\cos(t) y + \frac{dy(t)}{dt} = 0` with
+        initial value :math:`y(0) = 0.1`.
+
+        .. code-block::
+
+            t, y, dydt, = sp.symbols("t y dydt")
+            eq = sp.cos(t)*y + dydt
+            initial_values = [0.1]
+
+            loss_ODE = ODELoss(
+                eq,
+                symbols_involved_in_ODE=[t, y, dydt],
+                initial_values=initial_values,
+                boundary_handling="pinned",
+            )
+
+        2. Implements a loss function for the ODE :math:`\left(df(x)/dx\right) - cos(f(x)) = 0`
+        with initial values :math:`f(0) = 0.`.
+
+        .. code-block::
+
+            x, f, dfdx = sp.symbols("x f dfdx")
+            eq = dfdx - sp.cos(f)
+            initial_values = [0]
+
+            loss_ODE = ODELoss(
+                eq,
+                symbols_involved_in_ODE=[x, f, dfdx],
+                initial_values=initial_values,
+                boundary_handling="pinned",
+                eta=1.2,
+            )
+
+        References
+        ----------
+        [1]: A. Paine et al., "Quantum kernel methods for solving regression problems and differential equations", Phys. Rev. A 107, 032428
 
     Methods:
     --------
@@ -57,7 +104,7 @@ class ODELoss(KernelLossBase):
         
     def _create_ODE_loss_format(self, ODE_functional, symbols_involved_in_ODE=None):
         """
-        Given an ODE_functional, returns a function that takes the QNN derivatives list and
+        Given an ODE_functional in sympy format, returns a function that takes the derivatives list and
         returns the loss function.
 
         Args:
@@ -107,9 +154,8 @@ class ODELoss(KernelLossBase):
             )
         elif order_of_ODE == 2:
             print(
-                "WARNING: 2nd order DEs differentiate the QNN loss function by calculating the"
+                "WARNING: 2nd order DEs differentiate the loss function by calculating the"
                 " second derivative. This can be computationally expensive and inneficient."
-                " An alternative is to set-up coupled 1rst order DEs (currently not implemented)"
             )
         elif order_of_ODE > 2:
             raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")    
@@ -121,23 +167,31 @@ class ODELoss(KernelLossBase):
         Args:
             quantum_kernel (KernelMatrixBase): The quantum kernel to be used in the loss function.
         """
-        if quantum_kernel == "precomputed":
-            self._quantum_kernel = quantum_kernel
-        else:
-            self._quantum_kernel = quantum_kernel
+        self._quantum_kernel = quantum_kernel
 
     def compute(
         self,
         parameter_values: np.ndarray,
         data: np.ndarray,
         labels: np.ndarray,
-        kernel_tensor: np.ndarray = None, #[K, dKdx, dKdxdx] where dKdx is a np.ndarray of shape (n_samples, n_samples) and dKdxdx is a np.ndarray of shape (n_samples, n_samples)
+        kernel_tensor: np.ndarray = None, #[K, dKdx, dKdxdx] where dKdx is a np.ndarray of shape (n_samples, n_samples) and dKdxdx is a np.ndarray of shape (n_samples, n_samples) 
     ) -> float:
         """
+        Compute the ODE loss. The loss function is defined as the sum of the squared residuals of the ODE functional and the initial conditions.
+
+        Args:
+            parameter_values (np.ndarray): The parameter values for the variational quantum kernel parameters.
+            data (np.ndarray): The training data to be used for the kernel matrix.
+            labels (np.ndarray): The labels of the training data.
+            kernel_tensor (array): A tensor containing the kernel matrix and its derivatives. The tensor contains the kernel matrix,  the first derivative of the kernel matrix, and the second derivative of the kernel matrix. The shapes of each element in the array are (n_samples, n_samples).
+
         """
         
         def f_alpha_order(alpha_, kernel_tensor, order):
-            """Calculates f_alpha.
+            """Calculates the ansatz f_alpha. Order correspond to the number of times the ODE is differentiated.
+
+            For order = 0, the ansatz is $ f_\alpha = \alpha_0 + \sum_{i=1}^{n} \alpha_i k(x_i, x) $,
+            For order = 1, the ansatz is $ \frac{d f_\alpha}{dx} = \sum_{i=1}^{n} \alpha_i \frac{dk(x_i, x)}{dx}$,
 
             Args:
                 alpha_ (np.ndarray): The vector of alphas, of shape (len(x_span)+1, 1).
@@ -149,7 +203,7 @@ class ODELoss(KernelLossBase):
             """
             alpha = alpha_[1:]
             if order == 0:
-                return np.dot(kernel_tensor[order], alpha).reshape(-1, 1) + alpha_[0]
+                return np.dot(kernel_tensor[order], alpha).reshape(-1, 1) + alpha_[0] #shape (n_samples, 1)
             return np.dot(kernel_tensor[order], alpha).reshape(-1, 1)
 
 
