@@ -57,18 +57,16 @@ class QKODE(QKRR):
         self,
         quantum_kernel: Optional[Union[KernelMatrixBase, str]] = None,
         loss: KernelLossBase = None,
-        alpha: Union[float, np.ndarray] = 1.0e-6,
         optimizer: OptimizerBase = None,
         **kwargs,
     ) -> None:
-        super().__init__(quantum_kernel=quantum_kernel, alpha=alpha, **kwargs)
+        super().__init__(quantum_kernel=quantum_kernel, alpha=None, **kwargs)
         self._loss = loss
         self._loss.set_quantum_kernel(quantum_kernel)
         self._optimizer = optimizer
-
         
 
-    def fit(self, X, y, param_ini = None):
+    def fit(self, X, y, param_ini = None, K = None, dKdx = None):
         """
         
         """
@@ -80,24 +78,31 @@ class QKODE(QKRR):
         # set up kernel matrix
         if isinstance(self._quantum_kernel, str):
             if self._quantum_kernel == "precomputed":
-                self.k_train = X
+                self.k_train = K
+                self.dkdx_train = dKdx
             else:
                 raise ValueError("Unknown quantum kernel: {}".format(self._quantum_kernel))
         elif isinstance(self._quantum_kernel, KernelMatrixBase):
             # check if quantum kernel is trainable
             if self._quantum_kernel.is_trainable:
-                self._quantum_kernel.run_optimization(self.X_train, y)
+                print("The Quantum Kernel is trainable but training the parameters of the kernel is not supported yet. Setting random parameters.")
+                self._quantum_kernel.set_parameters(np.random.rand(self._quantum_kernel.num_parameters))
 
-            self.k_train = self._quantum_kernel.evaluate(x=self.X_train)  # set up kernel matrix
+            self.k_train = self._quantum_kernel.evaluate_derivatives(self.X_train, values = "K")
+            self.dkdx_train = self._quantum_kernel.evaluate_derivatives(self.X_train, values = "dKdx")
+
         else:
             raise ValueError(
                 "Unknown type of quantum kernel: {}".format(type(self._quantum_kernel))
             )
 
         if param_ini is None:
+            np.random.seed(0)
             param_ini = np.random.rand(len(y)+1)
 
-        loss_function = partial(self._loss.compute, data=X, labels=y)
+        
+        #pass self into the loss function 
+        loss_function = partial(self._loss.compute, data=X, labels=y, kernel_tensor=[self.k_train, self.dkdx_train]) 
         opt_result = self._optimizer.minimize(fun=loss_function, x0=param_ini)
         self.dual_coeff_ = opt_result.x    
         self._is_fitted = True
@@ -121,7 +126,8 @@ class QKODE(QKRR):
         if self.k_train is None:
             raise ValueError("The fit() method has to be called beforehand.")
 
-        X = self._validate_data(X, accept_sparse=("csr", "csc"), reset=False)
+        if self._quantum_kernel != "precomputed":    
+            X = self._validate_data(X, accept_sparse=("csr", "csc"), reset=False)
 
         if isinstance(self._quantum_kernel, str):
             if self._quantum_kernel == "precomputed":

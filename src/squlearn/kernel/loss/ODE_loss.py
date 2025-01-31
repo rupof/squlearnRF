@@ -121,33 +121,20 @@ class ODELoss(KernelLossBase):
         Args:
             quantum_kernel (KernelMatrixBase): The quantum kernel to be used in the loss function.
         """
-        self._quantum_kernel = quantum_kernel
+        if quantum_kernel == "precomputed":
+            self._quantum_kernel = quantum_kernel
+        else:
+            self._quantum_kernel = quantum_kernel
 
     def compute(
         self,
         parameter_values: np.ndarray,
         data: np.ndarray,
         labels: np.ndarray,
+        kernel_tensor: np.ndarray = None, #[K, dKdx, dKdxdx] where dKdx is a np.ndarray of shape (n_samples, n_samples) and dKdxdx is a np.ndarray of shape (n_samples, n_samples)
     ) -> float:
         """
         """
-
-        if self._quantum_kernel is None:
-            print(
-                "Quantum kernel is not set, please set the quantum kernel with set_quantum_kernel method, we are using a precomputed kernel matrix."
-            )
-        else:
-            # Bind training parameters
-            if self._quantum_kernel.num_parameters > 0:
-                raise ValueError(
-                    "QKODE with a parameterized quantum kernel is not supported yet."
-                )            #TODO implement random parameter generation instead of valueerror
-            else:
-                kernel_tensor = [self._quantum_kernel.evaluate_derivatives(data, values = "K"), 
-                             self._quantum_kernel.evaluate_derivatives(data, values = "dKdx")]
-                if self.order_of_ODE > 2:
-                    kernel_tensor.append(self._quantum_kernel.evaluate_derivatives(data, values = "dKdxdx"))
-
         
         def f_alpha_order(alpha_, kernel_tensor, order):
             """Calculates f_alpha.
