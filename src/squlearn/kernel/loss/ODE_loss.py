@@ -30,14 +30,14 @@ class ODELoss(KernelLossBase):
         initial_values (np.ndarray): Initial values of the ODE. The length of the array
             must match the order of the ODE.
         boundary_handling (str): Method for handling the boundary conditions. Currently, only
-            ``'pinned'``, 
+            ``'pinned'``,
 
                 * ``'pinned'``:  An extra term is added to the loss function to enforce the initial
                   values of the ODE. This term is pinned by the ``eta`` parameter. The
-                  loss function is given by: :math:`L = \sum_{i=0}^{n} L_{\theta_i}\left( \dot{f},
+                  loss function is given by: :math:`L = \sum_{i=0}^{n} L_{\alpha_i}\left( \dot{f},
                   f, x  \right) + \eta \cdot (f(x_0) - f_0)^2`,
                   with :math:`f(x) = \sum \alpha_i k(x_i, x)`.
-                
+
         eta (float): Weight for the initial values of the ODE in the loss function for the "pinned"
             boundary handling method.
 
@@ -47,7 +47,6 @@ class ODELoss(KernelLossBase):
         initial value :math:`y(0) = 0.1`.
 
         .. code-block::
-
             t, y, dydt, = sp.symbols("t y dydt")
             eq = sp.cos(t)*y + dydt
             initial_values = [0.1]
@@ -84,13 +83,14 @@ class ODELoss(KernelLossBase):
     --------
     """
 
-    def __init__(self,         
+    def __init__(
+        self,
         ODE_functional=None,
         symbols_involved_in_ODE=None,
         initial_values: np.ndarray = None,
         eta=np.float64(1.0),
         boundary_handling="pinned",
-        ):
+    ):
         super().__init__()
         self._verify_size_of_ivp_with_order_of_ODE(initial_values, symbols_involved_in_ODE)
         self.order_of_ODE = (
@@ -101,7 +101,7 @@ class ODELoss(KernelLossBase):
         self.initial_values = initial_values
         self.eta = eta
         self.boundary_handling = boundary_handling
-        
+
     def _create_ODE_loss_format(self, ODE_functional, symbols_involved_in_ODE=None):
         """
         Given an ODE_functional in sympy format, returns a function that takes the derivatives list and
@@ -136,7 +136,7 @@ class ODELoss(KernelLossBase):
             raise ValueError("Only sympy expressions are allowed")
 
         return _ODE_functional
-    
+
     def _verify_size_of_ivp_with_order_of_ODE(self, initial_values, symbols_involved_in_ODE):
         """
         Verifies that the length of the initial values vector matches the order of the ODE.
@@ -158,8 +158,8 @@ class ODELoss(KernelLossBase):
                 " second derivative. This can be computationally expensive and inneficient."
             )
         elif order_of_ODE > 2:
-            raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")    
-        
+            raise ValueError("Currently, only 1rst and 2nd order ODEs are supported")
+
     def set_quantum_kernel(self, quantum_kernel: KernelMatrixBase) -> None:
         """
         Set the quantum kernel to be used in the loss function.
@@ -174,28 +174,40 @@ class ODELoss(KernelLossBase):
         parameter_values: np.ndarray,
         data: np.ndarray,
         labels: np.ndarray,
-        kernel_tensor: np.ndarray = None, #[K, dKdx, dKdxdx] where dKdx is a np.ndarray of shape (n_samples, n_samples) and dKdxdx is a np.ndarray of shape (n_samples, n_samples) 
+        kernel_tensor: np.ndarray = None,  # [K, dKdx, dKdxdx] where dKdx is a np.ndarray of shape (n_samples, n_samples) and dKdxdx is a np.ndarray of shape (n_samples, n_samples)
     ) -> float:
         """
-        Compute the ODE loss. The loss function is defined as the sum of the squared residuals of the ODE functional and the initial conditions.
+        Calculates the squared loss of the loss function for the ODE as
+
+        .. math::
+            \begin{align}
+                \mathcal{L}_{\vec{\alpha}} [ \ddot f,  \dot f, f,  x] &= \sum_j^N
+                \left(F\left( \ddot f_{\vec{\alpha}},  \dot f_{\vec{\alpha}},
+                f_{\vec{\alpha}}, x\right)_j\right)^2  + \eta\left(f_{\vec{\alpha}}(0)
+                - u_0\right)^2 + \eta\left(\dot f_{\vec{\alpha}}(0) - \dot u_0\right)^2
+            \end{align}
+        with the ansatz :math:`f_{\vec{\alpha}} = \alpha_0 + \sum_{i=1}^{n} \alpha_i k(x_i, x)`. Importantly, the optimized parameters act as the coefficients of the kernel matrix and do not directly correspond parameterized rotations in the quantum circuit.
 
         Args:
-            parameter_values (np.ndarray): The parameter values for the variational quantum kernel parameters.
+            parameter_values (np.ndarray): The parameters :math:`\vec{\alpha}` of the ansatz to be optimized.
             data (np.ndarray): The training data to be used for the kernel matrix.
             labels (np.ndarray): The labels of the training data.
             kernel_tensor (array): A tensor containing the kernel matrix and its derivatives. The tensor contains the kernel matrix,  the first derivative of the kernel matrix, and the second derivative of the kernel matrix. The shapes of each element in the array are (n_samples, n_samples).
 
+        Returns:
+            float: The loss function value.
+
         """
-        
+
         def f_alpha_order(alpha_, kernel_tensor, order):
             """Calculates the ansatz f_alpha. Order correspond to the number of times the ODE is differentiated.
 
-            For order = 0, the ansatz is $ f_\alpha = \alpha_0 + \sum_{i=1}^{n} \alpha_i k(x_i, x) $,
-            For order = 1, the ansatz is $ \frac{d f_\alpha}{dx} = \sum_{i=1}^{n} \alpha_i \frac{dk(x_i, x)}{dx}$,
+            For order = 0, the ansatz is :math:`f_{\vec{\alpha}} = \alpha_0 + \sum_{i=1}^{n} \alpha_i k(x_i, x)`.
+            For order = 1, the ansatz is :math:`\dot f_{\vec{\alpha}} = \sum_{i=1}^{n} \alpha_i \dot k(x_i, x)`.
 
             Args:
                 alpha_ (np.ndarray): The vector of alphas, of shape (len(x_span)+1, 1).
-                kernel_tensor (tuple): A tuple containing kernel objects for f_alpha_0 and f_alpha_1. 
+                kernel_tensor (tuple): A tuple containing kernel objects for f_alpha_0 and f_alpha_1.
                 order (int): Order of the kernel.
 
             Returns:
@@ -203,13 +215,21 @@ class ODELoss(KernelLossBase):
             """
             alpha = alpha_[1:]
             if order == 0:
-                return np.dot(kernel_tensor[order], alpha).reshape(-1, 1) + alpha_[0] #shape (n_samples, 1)
+                return (
+                    np.dot(kernel_tensor[order], alpha).reshape(-1, 1) + alpha_[0]
+                )  # shape (n_samples, 1)
             return np.dot(kernel_tensor[order], alpha).reshape(-1, 1)
 
-
-        f_alpha_tensor = np.array([f_alpha_order(parameter_values, kernel_tensor, i) for i in range(self.order_of_ODE+1)])        
-        sum1 = np.sum((self.ODE_functional([data, *f_alpha_tensor])**2)) #Functional
-        sum2 = np.sum((f_alpha_tensor[:,0][:len(self.initial_values)] - self.initial_values)**2) #Initial condition
+        f_alpha_tensor = np.array(
+            [
+                f_alpha_order(parameter_values, kernel_tensor, i)
+                for i in range(self.order_of_ODE + 1)
+            ]
+        )
+        sum1 = np.sum((self.ODE_functional([data, *f_alpha_tensor]) ** 2))  # Functional
+        sum2 = np.sum(
+            (f_alpha_tensor[:, 0][: len(self.initial_values)] - self.initial_values) ** 2
+        )  # Initial condition
         L = sum2 + sum1 * self.eta
-        
+
         return L
