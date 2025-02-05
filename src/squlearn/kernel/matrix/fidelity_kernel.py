@@ -16,6 +16,8 @@ from .kernel_matrix_base import KernelMatrixBase
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ...util.executor import Executor, BaseSamplerV2
 from ...util.data_preprocessing import convert_to_float64
+from ...util.data_preprocessing import to_tuple
+
 
 from .fidelity_kernel_pennylane import FidelityKernelPennyLane
 
@@ -86,6 +88,7 @@ class FidelityKernel(KernelMatrixBase):
         initial_parameters: Union[np.ndarray, None] = None,
         parameter_seed: Union[int, None] = 0,
         regularization: Union[str, None] = None,
+        caching: bool = False, 
     ) -> None:
         super().__init__(
             encoding_circuit, executor, initial_parameters, parameter_seed, regularization
@@ -94,6 +97,11 @@ class FidelityKernel(KernelMatrixBase):
         self._quantum_kernel = None
         self._evaluate_duplicates = evaluate_duplicates
         self._mit_depol_noise = mit_depol_noise
+        self._qnn = None
+        self._caching = caching
+        self._derivative_cache = {}
+
+
 
         if self.num_parameters > 0:
             self._parameter_vector = ParameterVector("p", self.num_parameters)
@@ -284,6 +292,186 @@ class FidelityKernel(KernelMatrixBase):
         ):
             kernel_matrix = self._regularize_matrix(kernel_matrix)
         return kernel_matrix
+    
+    def evaluate_derivatives(
+        self, x: np.ndarray, y: np.ndarray = None, values: Union[str, tuple] = "dKdx"
+    ) -> dict:
+        """
+        Evaluates the Projected Quantum Kernel and its derivatives for the given data points x and y.
+
+        Args:
+            x (np.ndarray): Data points x
+            y (np.ndarray): Data points y, if None y = x is used
+            values (Union[str, tuple]): Values to evaluate. Can be a string or a tuple of strings.
+                Possible values are: ``dKdx``, ``dKdy``, ``dKdxdx``
+        Returns:
+            Dictionary with the evaluated values
+
+        """
+        from squlearn.qnn.lowlevel_qnn import LowLevelQNN
+
+        def FQK_circuit(circuit1, circuit2):
+            return circuit1.compose(circuit2.inverse())
+
+        def P0_squlearn(num_qubits):
+            """
+            Create the P0 observable: (|0><0|)^\otimes n for the quantum circuit in the format of the squlearn library. 
+            Note that |0><0| = 0.5*(I + Z) 
+
+            Parameters:
+            num_qubits: int, the number of qubits in the quantum circuit.
+
+            return:
+            - CustomObservable: The P0 observable in the format of the squlearn library.
+            - coefficients: The coefficients of the P0 observable to be used in the QNN squlearn evaluation
+
+            """
+            from qiskit.quantum_info import SparsePauliOp
+            from squlearn.observables import CustomObservable
+
+            
+            P0_single_qubit = SparsePauliOp.from_list([("Z", 0.5), ("I", 0.5)])
+            P0_temp = P0_single_qubit
+            for i in range(1, num_qubits):
+                P0_temp = P0_temp.expand(P0_single_qubit)
+            observable_tuple_list = P0_temp.to_list()
+            pauli_str = [observable[0] for observable in observable_tuple_list]    
+            return CustomObservable(num_qubits, pauli_str, parameterized=True)
+        
+        def to_FQK_circuit_format(x, y = None):
+            """
+            Transforms an input array of shape (n, m) into an array of shape (n*n, 2*m),
+            where each row consists of all possible ordered pairs of rows from the input array.
+
+            Parameters:
+            x (numpy.ndarray): An input array of shape (n, m), where n is the number of samples
+                            and m is the number of features.
+
+            Returns:
+            numpy.ndarray: A transformed array of shape (n*n, 2*m), containing all possible
+                        ordered pairs of rows from x.
+
+            Example:
+            --------
+            >>> x = np.array([[1], 
+            ...               [2], 
+            ...               [3]])
+            >>> to_proper_format(x)
+            array([[1, 1],
+                [2, 1],
+                [3, 1],
+                [1, 2],
+                [2, 2],
+                [3, 2],
+                [1, 3],
+                [2, 3],
+                [3, 3]])
+            """
+            if y is None:
+                y = x
+                n, m = x.shape
+                x_rep = np.repeat(x, n, axis=0)  # Repeat each row n times
+                x_tile = np.tile(x, (n, 1))      # Tile the entire array n times
+            else:
+                n, m = x.shape
+                n2, m2 = y.shape
+                x_rep = np.repeat(x, n2, axis=0)
+                x_tile = np.tile(y, (n, 1))
+            result = np.hstack((x_rep, x_tile))
+            return result
+        
+        
+        if self._parameters is None and self.num_parameters == 0:
+            self._parameters = []
+        if self._parameters is None:
+            raise ValueError("Parameters have not been set yet!")
+        
+        coef = np.array([1/2**self.encoding_circuit.num_qubits for i in range(2**self.encoding_circuit.num_qubits)])
+        #_qnn that implements tr(\rho(x), \rho(y)) by U(y)^\dagger U(x) |0> and measuring P0=|0><0|^\otimes n
+        self._qnn = LowLevelQNN(FQK_circuit(self.encoding_circuit, self.encoding_circuit), P0_squlearn(self.encoding_circuit.num_qubits), executor=self._executor)
+        
+
+        param = self._parameters
+        param_op = coef
+
+        if self._caching:
+            caching_tuple = (
+                to_tuple(x),
+                to_tuple(param),
+                to_tuple(param_op),
+                (self._executor.shots == None),
+            )
+            value_dict = self._derivative_cache.get(caching_tuple, {})
+        else:
+            value_dict = {}
+
+        value_dict["x"] = to_FQK_circuit_format(x, y) # from shape: (n1, m) and (n2, m) to shape: (n1*n2, 2*m)
+        value_dict["param"] = param
+        value_dict["param_op"] = param_op
+
+        def eval_helper(x, todo):
+            return self._qnn.evaluate(x, param, param_op, todo)[todo]
+        
+
+        mutiple_values = True
+        if isinstance(values, str):
+            mutiple_values = False
+            values = [values]
+
+        for todo in values:
+            if todo in value_dict:
+                continue
+            else:
+                if todo == "K":
+                    kernel_matrix = eval_helper(value_dict["x"], "f").reshape(x.shape[0], y.shape[0])
+                elif todo == "dKdx" or todo == "dKdy":
+                    dKdx = eval_helper(value_dict["x"], "dfdx").reshape(2*self.num_features, x.shape[0], y.shape[0]) # shape (num_features, len(x), len(y))
+                    if self.num_features == 1:
+                        if todo[2:] == "dx":
+                            kernel_matrix = dKdx[0]
+                        elif todo[2:] == "dy":
+                            kernel_matrix = dKdx[1]
+                    else:
+                        if todo[2:] == "dx":
+                            kernel_matrix = dKdx[:self.num_features]
+                        elif todo[2:] == "dy":
+                            kernel_matrix = dKdx[self.num_features:]
+                elif todo == "dKdp":
+                    kernel_matrix = eval_helper(value_dict["x"], "dfdp").reshape(self.num_parameters, x.shape[0], y.shape[0]) # shape (num_parameters, len(x), len(y))
+                elif todo == "dKdxdx" or todo == "dKdydy" or todo == "dKdxdy" or todo == "dKdydx" or todo == "dKdxdy" or todo == "jacobian":
+                    jacobian = eval_helper(value_dict["x"], "dfdxdx").reshape(2*self.num_features, 2*self.num_features, x.shape[0], y.shape[0]) # shape (2*num_features, 2*num_features, len(x), len(y)) 
+                    if self.num_features == 1:
+                        if todo[2:] == "dxdx":
+                            kernel_matrix = jacobian[0, 0] #shape (len(x), len(x))
+                        elif todo[2:] == "dydy":
+                            kernel_matrix = jacobian[1, 1] #shape (len(y), len(y))
+                        elif todo[2:] == "dxdy":
+                            kernel_matrix = jacobian[0, 1] #shape (len(x), len(y))
+                        elif todo[2:] == "dydx":
+                            kernel_matrix = jacobian[1, 0] #shape (len(y), len(x))
+                        elif todo == "jacobian":
+                            kernel_matrix = jacobian
+                    else:
+                        if todo[2:] == "dxdx":
+                            kernel_matrix = jacobian[:self.num_features, :self.num_features] #shape (num_features, num_features, len(x), len(x))
+                        elif todo[2:] == "dydy":
+                            kernel_matrix = jacobian[self.num_features:, self.num_features:] #shape (num_features, num_features, len(y), len(y))
+                        elif todo[2:] == "dxdy":
+                            kernel_matrix = jacobian[:self.num_features, self.num_features:] #shape (num_features, num_features, len(x), len(y))
+                        elif todo[2:] == "dydx":
+                            kernel_matrix = jacobian[self.num_features:, :self.num_features] #shape (num_features, num_features, len(y), len(x))
+                        elif todo == "jacobian":
+                            kernel_matrix = jacobian #shape (2*num_features, 2*num_features, len(x), len(y))
+
+                value_dict[todo] = kernel_matrix
+
+        if self._caching:
+            self._derivative_cache[caching_tuple] = value_dict
+
+        if mutiple_values:
+            return value_dict
+        else:
+            return value_dict[values[0]]
 
     def _get_msplit_kernel(self, kernel: np.ndarray) -> np.ndarray:
         """Function to mitigate depolarizing noise using msplit method.
