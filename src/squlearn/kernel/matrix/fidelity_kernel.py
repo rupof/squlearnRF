@@ -293,13 +293,13 @@ class FidelityKernel(KernelMatrixBase):
         self, x: np.ndarray, y: np.ndarray = None, values: Union[str, tuple] = "dKdx"
     ) -> dict:
         """
-        Evaluates the Projected Quantum Kernel and its derivatives for the given data points x and y.
+        Evaluates the Fidelity Quantum Kernel and its derivatives for the given data points x and y.
 
         Args:
             x (np.ndarray): Data points x
             y (np.ndarray): Data points y, if None y = x is used
             values (Union[str, tuple]): Values to evaluate. Can be a string or a tuple of strings.
-                Possible values are: ``dKdx``, ``dKdy``, ``dKdxdx``
+                Possible values are: ``dKdx``, ``dKdy``, ``dKdxdx``, ``dKdydy``, ``dKdxdy``, ``dKdydx``, ``dKdp`` and ``jacobian``.
         Returns:
             Dictionary with the evaluated values
 
@@ -316,8 +316,6 @@ class FidelityKernel(KernelMatrixBase):
 
             return:
             - CustomObservable: The P0 observable in the format of the squlearn library.
-            - coefficients: The coefficients of the P0 observable to be used in the QNN squlearn evaluation
-
             """
             from qiskit.quantum_info import SparsePauliOp
             from squlearn.observables import CustomObservable
@@ -359,13 +357,11 @@ class FidelityKernel(KernelMatrixBase):
                 [2, 3],
                 [3, 3]])
             """
-            if x.shape[0] == 1 and y.shape[0] == 1: 
+            if x.shape[0] == 1 and y.shape[0] == 1:
                 if x.ndim == 2 and y.ndim == 2:
-                    return np.array([x[0][0], 
-                                    y[0][0]])
+                    return np.array([x[0][0], y[0][0]])
                 else:
-                    return np.array([x[0], 
-                                    y[0]])
+                    return np.array([x[0], y[0]])
             if y is None:
                 y = x
                 n = x.shape[0]
@@ -383,7 +379,7 @@ class FidelityKernel(KernelMatrixBase):
             self._parameters = []
         if self._parameters is None:
             raise ValueError("Parameters have not been set yet!")
-        coef = np.array(    
+        coef = np.array(
             [
                 1 / 2**self.encoding_circuit.num_qubits
                 for i in range(2**self.encoding_circuit.num_qubits)
@@ -415,7 +411,7 @@ class FidelityKernel(KernelMatrixBase):
             x, y
         )  # from shape: (n1, m) and (n2, m) to shape: (n1*n2, 2*m)
         value_dict["param"] = param  # Parameters of Quantum Kernel
-        value_dict["param_op"] = param_op # Constant coefficients for the observable P0
+        value_dict["param_op"] = param_op  # Constant coefficients for the observable P0
 
         def eval_helper(x, todo):
             return self._qnn.evaluate(x, param, param_op, todo)[todo]
@@ -431,11 +427,14 @@ class FidelityKernel(KernelMatrixBase):
             else:
                 if todo == "K":
                     kernel_matrix = eval_helper(value_dict["x"], "f").reshape(
-                        x.shape[0], y.shape[0], 
+                        x.shape[0],
+                        y.shape[0],
                     )
                 elif todo == "dKdx" or todo == "dKdy":
-                    dKdx = eval_helper(value_dict["x"], "dfdx").reshape(x.shape[0], y.shape[0], 2 * self.num_features) #shape (len(x), len(y), 2*num_features)
-                    #to keep consistency with the PQK derivatives, we need to transpose the dKdx matrix to be of shape (2*num_features, len(x), len(y))
+                    dKdx = eval_helper(value_dict["x"], "dfdx").reshape(
+                        x.shape[0], y.shape[0], 2 * self.num_features
+                    )  # shape (len(x), len(y), 2*num_features)
+                    # to keep consistency with the PQK derivatives, we need to transpose the dKdx matrix to be of shape (2*num_features, len(x), len(y))
                     dKdx = dKdx.transpose(2, 0, 1)
                     if self.num_features == 1:
                         if todo[2:] == "dx":
@@ -450,8 +449,8 @@ class FidelityKernel(KernelMatrixBase):
                 elif todo == "dKdp":
                     dKdp = eval_helper(value_dict["x"], "dfdp").reshape(
                         x.shape[0], y.shape[0], self.num_parameters
-                    ) # shape (len(x), len(y), num_parameters)
-                    #to keep consistency with the PQK derivatives, we need to transpose the dKdp matrix to be of shape (num_parameters, len(x), len(y))
+                    )  # shape (len(x), len(y), num_parameters)
+                    # to keep consistency with the PQK derivatives, we need to transpose the dKdp matrix to be of shape (num_parameters, len(x), len(y))
                     kernel_matrix = dKdp.transpose(2, 0, 1)
                 elif (
                     todo == "dKdxdx"
@@ -463,8 +462,8 @@ class FidelityKernel(KernelMatrixBase):
                 ):
                     jacobian = eval_helper(value_dict["x"], "dfdxdx").reshape(
                         x.shape[0], y.shape[0], 2 * self.num_features, 2 * self.num_features
-                    ) # shape (len(x), len(y), 2*num_features, 2*num_features)
-                    #to keep consistency with the PQK derivatives, we need to transpose the jacobian matrix to be of shape (2*num_features, 2*num_features, len(x), len(y))
+                    )  # shape (len(x), len(y), 2*num_features, 2*num_features)
+                    # to keep consistency with the PQK derivatives, we need to transpose the jacobian matrix to be of shape (2*num_features, 2*num_features, len(x), len(y))
                     jacobian = jacobian.transpose(2, 3, 0, 1)
                     if self.num_features == 1:
                         if todo[2:] == "dxdx":

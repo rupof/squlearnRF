@@ -166,40 +166,13 @@ class EncodingCircuitBase:
                 super().__init__(ec.num_qubits, ec.num_features)
                 self.ec = ec
 
-            @property
-            def num_parameters(self) -> int:
-                """Returns the number of trainable parameters of the encoding circuit."""
-                return self.ec.num_parameters
-
-            @property
-            def parameter_bounds(self) -> np.ndarray:
-                """Returns the bounds of the trainable parameters of the encoding circuit."""
-                return self.ec.parameter_bounds
-
-            @property
-            def feature_bounds(self) -> np.ndarray:
-                """Returns the bounds of the features of the encoding circuit."""
-                return self.ec.feature_bounds
-
-            def generate_initial_parameters(self, seed: Union[int, None] = None) -> np.ndarray:
-                """
-                Generates random parameters for the encoding circuit
-
-                Args:
-                    seed (Union[int,None]): Seed for the random number generator
-
-                Return:
-                    Returns the randomly generated parameters
-                """
-                return self.ec.generate_initial_parameters(seed)
-
             def get_circuit(
                 self,
                 features: Union[ParameterVector, np.ndarray],
                 parameters: Union[ParameterVector, np.ndarray],
             ) -> QuantumCircuit:
                 """
-                Returns the circuit of the encoding circuit
+                Returns the inverse circuit of the encoding circuit
 
                 Args:
                     features Union[ParameterVector,np.ndarray]: Input vector of the features
@@ -208,7 +181,7 @@ class EncodingCircuitBase:
                         from which the gate inputs are obtained
 
                 Return:
-                    Returns the circuit of the encoding circuit in qiskit QuantumCircuit format
+                    Returns the inverse circuit of the encoding circuit in qiskit QuantumCircuit format
                 """
                 circ = self.ec.get_circuit(features, parameters)
                 return circ.inverse()
@@ -241,7 +214,7 @@ class EncodingCircuitBase:
         class ComposedEncodingCircuit(EncodingCircuitBase):
             """
             Special class for composed encoding circuits.
-
+            The only difference with the sum of encoding circuits is that the parameters vector is shared and the features are concatenated.
             Args:
                 num_qubits: num qubits for both encoding circuits (necessary for scikit-learn interface)
                 ec1 (EncodingCircuitBase): right / first encoding circuit
